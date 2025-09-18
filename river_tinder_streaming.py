@@ -292,7 +292,7 @@ class TifViewerApp:
 
     def like(self):
         # global liked_ids
-
+        print('like')
         if self.i >= 0 and self.img_name:
             self.liked_ids.append(self.img_name)
         self.advance()
@@ -302,7 +302,7 @@ class TifViewerApp:
         # print(' ')
 
     def dislike(self):
-
+        print('dislike')
         if self.i >= 0 and self.img_name:
             self.disliked_ids.append(self.img_name)
         self.advance()
@@ -444,37 +444,47 @@ if __name__ == "__main__":
             lines = [line.strip() for line in f.readlines()]
         lols.append(lines)
 
-    checked_id_list = list(itertools.chain.from_iterable(lols))
+    checked_name_list = list(itertools.chain.from_iterable(lols))
 
     checked_img_ids = []
     checked_iidxes = []
+    checked_names = []
 
-    for id in checked_id_list:
-        img_id = str(id[0:24])
-        iidx = int(id[25:])
+    for name in set(checked_name_list):
+        img_id = str(name[0:24])
+        iidx = int(name[25:])
         checked_img_ids.append(img_id)
         checked_iidxes.append(iidx)
+        checked_names.append(name)
 
-    print(len(checked_id_list))
-    print(len(set(checked_id_list)))
-
+    print(len(checked_img_ids))
+    print(len(checked_iidxes))
+    print(len(checked_names))
     
-    checked_df = pd.DataFrame({'img_id': checked_img_ids, 'iindex': checked_iidxes}, index=checked_id_list)
+    checked_df = pd.DataFrame({'img_id': checked_img_ids, 'iindex': checked_iidxes, 'name': checked_names}).set_index('name')
+    checked_df.to_csv('C:/Users/dego/Desktop/checked_df2.csv')
     # print(checked_df)
     # print('n checked ids: ', len(checked_df))
     vector_centerlines = gpd.read_file(f'{asset_loc}/centerline/s2_platte_centerlines_4326.shp')
+    print('poop3')
+    # normal mode
+    {
+    # imgs_w_ids = pd.read_csv(f'{asset_loc}/gage_sites/gage_stac_ids_iidx_clouds_lt20.csv')
+    # imgs_w_ids['img_id'] = imgs_w_ids.apply(lambda x: str(x['0'].split('=')[1][:24]), axis=1)
+    # imgs_w_ids = imgs_w_ids.rename(columns={'1': 'iindex'})[['img_id', 'iindex']]
+    # imgs_w_ids = imgs_w_ids.set_index(pd.Series([f'{a}_{b}' for a, b in zip(imgs_w_ids['img_id'], imgs_w_ids['iindex'])]))
+    # unchecked_ids = imgs_w_ids[~imgs_w_ids[['img_id', 'iindex']].isin(checked_df[['img_id', 'iindex']]).all(axis=1)]
+    }
     
-
-    imgs_w_ids = pd.read_csv(f'{asset_loc}/gage_sites/gage_stac_ids_iidx_clouds_lt20.csv')
-    imgs_w_ids['img_id'] = imgs_w_ids.apply(lambda x: str(x['0'].split('=')[1][:24]), axis=1)
-    imgs_w_ids = imgs_w_ids.rename(columns={'1': 'iindex'})[['img_id', 'iindex']]
+    
+    # spot check mode, use to see same day gage and satellite width measurements
+    imgs_w_ids = pd.read_csv(f'{asset_loc}/gage_sites/sameday_sat_gage_width.csv')
+    imgs_w_ids = imgs_w_ids[['img_id', 'iindex']]
     imgs_w_ids = imgs_w_ids.set_index(pd.Series([f'{a}_{b}' for a, b in zip(imgs_w_ids['img_id'], imgs_w_ids['iindex'])]))
-    # print('total ids: ', len(imgs_w_ids))
     unchecked_ids = imgs_w_ids[~imgs_w_ids[['img_id', 'iindex']].isin(checked_df[['img_id', 'iindex']]).all(axis=1)]
-
-    # print(unchecked_ids.head())
-    # print('unchecked ids: ', len(unchecked_ids))
-    
+    print(unchecked_ids)
+    # print(checked_df.dtypes)
+    # print(imgs_w_ids.dtypes)
 
     iidxes = unchecked_ids['iindex']
     img_ids = unchecked_ids['img_id']
@@ -489,7 +499,7 @@ if __name__ == "__main__":
     stac = stac_client.open('https://earth-search.aws.element84.com/v1')
 
 
-
+    print('poop1')
     ### gui stuff
     root = tk.Tk()
     app = TifViewerApp(root)
