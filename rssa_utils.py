@@ -478,7 +478,7 @@ def CALCULATE_WIDTH(scene, pts):
     imgId = scene.get('PRODUCT_ID')
     bound = scene.select('river_mask').geometry()
 
-    infoExport = scene.select(['river_mask', 'snow_mask', 'cloud_mask'])
+    infoExport = scene.select(['river_mask', 'snow_mask', 'cloud_mask', 'cloudwater_mask'])
 
     infoEnds = scene.select('river_mask')
 
@@ -514,13 +514,19 @@ def get_width(pts, infoExport, infoEnds, crs, scale, imgId):
 
 
 def prepExport(f):
-    f = f.set({
+
+    pt_geom = ee.Geometry(f.get('longitude_latitude'))
+    x = pt_geom.coordinates().get(0)
+    y = pt_geom.coordinates().get(1)
+                                  
+    fOut = f.set({
         'width': ee.Algorithms.If(ee.Number(f.get('count')).lt(2), ee.Number(-999), ee.Number(f.get('MLength')).multiply(ee.Number(f.get('river_mask')))),
         'endsInWater': ee.Number(f.get('any')).eq(1),
-        'endsOverEdge': ee.Number(f.get('count')).lt(2)
-    })
+        'endsOverEdge': ee.Number(f.get('count')).lt(2),
+        'x': x,
+        'y': y
+    }).setGeometry(None)
 
-    fOut = f.setGeometry(f.get('longitude_latitude'))
         # .copyProperties(f, None, ['any', 'count', 'MLength', 'xc', 'yc', 'riverMask'])
 
     return fOut
