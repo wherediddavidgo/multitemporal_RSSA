@@ -23,9 +23,9 @@ from stac_utils import (ref_geoms_from_b3href, process_image_from_hrefs,
 G_CI=G_CL=HREFS=None
 
 
-def _init_worker(circle_path, centerline_path, pt_path, href_dict_in, valid_iids):
-    global G_CI, G_CL, G_PT, HREFS
-    # squares = gpd.read_file(square_path).set_crs(4326)
+def _init_worker(square_path, circle_path, centerline_path, pt_path, href_dict_in, valid_iids):
+    global G_SQ, G_CI, G_CL, G_PT, HREFS
+    squares = gpd.read_file(square_path).set_crs(4326)
     circles = gpd.read_file(circle_path).set_crs(4326)
     pts = gpd.read_file(pt_path).set_crs(4326)
     G_CL = gpd.read_file(centerline_path).set_crs(4326, allow_override=True)
@@ -45,6 +45,7 @@ def _init_worker(circle_path, centerline_path, pt_path, href_dict_in, valid_iids
     # keep_idx = circles.groupby('cluster').sample(1, random_state=0).index
     G_CI = circles.loc[circles.iindex.isin(valid_iids)].set_index('iindex')
     G_PT = pts.loc[pts.iindex.isin(valid_iids)].set_index('iindex')
+    G_SQ = squares.loc[squares.iindex.isin(valid_iids)].set_index('iindex')
     # .drop(columns='cluster')
 
     
@@ -57,8 +58,8 @@ def _worker(rec):
     img_id, idx = rec
     b3, b8, scl = HREFS[(str(img_id), (idx))]
     # print(rec)
-    circle, lines = ref_geoms_from_b3href(b3, (idx), G_CI, G_CL)
-    ndwi, wmask, cloud, snow, valid, transform = process_image_from_hrefs(b3, b8, scl, circle)
+    square, circle, lines = ref_geoms_from_b3href(b3, (idx), G_SQ, G_CI, G_CL)
+    ndwi, wmask, cloud, snow, valid, transform = process_image_from_hrefs(b3, b8, scl, square, circle)
     p = G_PT.loc[idx]
     xcoord = p.geometry.x
     ycoord = p.geometry.y
@@ -92,7 +93,7 @@ if __name__ == "__main__":
             break
 
 
-    
+    squares = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\squares_15x_20251010.shp"
     circles = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\circles_3x_20251010.shp"
     clines  = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\Vector_centerlines\s2_platte_centerlines.shp"
     href_csv=fr"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_{year}_20251012.csv"
@@ -113,7 +114,7 @@ if __name__ == "__main__":
     with ProcessPoolExecutor(max_workers=min(6, mp.cpu_count()),
                              mp_context=ctx,
                              initializer=_init_worker,
-                             initargs=(circles, clines, pts, HREFS_PARENT, valid_iids)) as ex:
+                             initargs=(squares, circles, clines, pts, HREFS_PARENT, valid_iids)) as ex:
         rows = list(tqdm(ex.map(_worker, records, chunksize=8), total=len(records)))
     out = pd.DataFrame(rows, columns=[
         "img_id","iindex","n_pixels","n_valid","n_river","n_cloud","n_snow","n_cloudriver","n_edge","n_edgeriver", "x", "y"

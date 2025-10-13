@@ -13,17 +13,17 @@ from pyproj import Transformer
 
 
 
-def ref_geoms_from_b3href(b3_href, poly_idx, effwidth_geoms, centerline_geoms):
+def ref_geoms_from_b3href(b3_href, poly_idx, view_geoms, effwidth_geoms, centerline_geoms):
     with rasterio.open(b3_href) as src:
         img_crs = src.crs
     # print(poly_idx)
-    # view_geom = view_geoms.loc[poly_idx].geometry
+    view_geom = view_geoms.loc[poly_idx].geometry
     eff_geom = effwidth_geoms.loc[poly_idx].geometry
 
-    # t_view = Transformer.from_crs(view_geoms.crs, img_crs,  always_xy=True).transform
+    t_view = Transformer.from_crs(view_geoms.crs, img_crs,  always_xy=True).transform
     t_eff = Transformer.from_crs(effwidth_geoms.crs, img_crs, always_xy=True).transform
 
-    # view_src = shp_transform(t_view, view_geom)
+    view_src = shp_transform(t_view, view_geom)
     eff_src  = shp_transform(t_eff,  eff_geom)
 
     # Filter lines by intersection in image CRS, then reproject only those (cheap)
@@ -34,7 +34,7 @@ def ref_geoms_from_b3href(b3_href, poly_idx, effwidth_geoms, centerline_geoms):
     hits = list(cl_img.sindex.query(eff_src, predicate="intersects"))
     lines_in_bound = cl_img.iloc[hits].copy()
 
-    return eff_src, lines_in_bound
+    return view_src, eff_src, lines_in_bound
 
 
 def dn_to_reflectance(band):
@@ -49,8 +49,8 @@ def normalized_difference(b1, b2):
 
 
 
-def process_image_from_hrefs(b3_href, b8_href, scl_href, otsu_geom):
-    l, b, r, t = map(float, otsu_geom.bounds)
+def process_image_from_hrefs(b3_href, b8_href, scl_href, view_geom, otsu_geom):
+    l, b, r, t = map(float, view_geom.bounds)
 
     with rasterio.open(b3_href) as b3_src:
         window = rasterio.windows.from_bounds(l, b, r, t, b3_src.transform).round_offsets().round_lengths()
