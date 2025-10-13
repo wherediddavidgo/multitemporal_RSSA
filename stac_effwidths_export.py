@@ -23,11 +23,11 @@ from stac_utils import (ref_geoms_from_b3href, process_image_from_hrefs,
 G_CI=G_CL=HREFS=None
 
 
-def _init_worker(circle_path, centerline_path, href_dict_in, valid_iids):
-    global G_CI, G_CL, HREFS
+def _init_worker(circle_path, centerline_path, pt_path, href_dict_in, valid_iids):
+    global G_CI, G_CL, G_PT, HREFS
     # squares = gpd.read_file(square_path).set_crs(4326)
     circles = gpd.read_file(circle_path).set_crs(4326)
-    # pts = gpd.read_file(pt_path).set_crs(4326)
+    pts = gpd.read_file(pt_path).set_crs(4326)
     G_CL = gpd.read_file(centerline_path).set_crs(4326, allow_override=True)
 
     # duplicated_iidxes = circles.iindex[circles.iindex.duplicated()]
@@ -44,6 +44,7 @@ def _init_worker(circle_path, centerline_path, href_dict_in, valid_iids):
 
     # keep_idx = circles.groupby('cluster').sample(1, random_state=0).index
     G_CI = circles.loc[circles.iindex.isin(valid_iids)].set_index('iindex')
+    G_PT = pts.loc[pts.iindex.isin(valid_iids)].set_index('iindex')
     # .drop(columns='cluster')
 
     
@@ -58,10 +59,15 @@ def _worker(rec):
     # print(rec)
     circle, lines = ref_geoms_from_b3href(b3, (idx), G_CI, G_CL)
     ndwi, wmask, cloud, snow, valid, transform = process_image_from_hrefs(b3, b8, scl, circle)
+    p = G_PT.loc[idx]
+    xcoord = p.geometry.x
+    ycoord = p.geometry.y
+
     if ndwi.size <= 1:
-        return (img_id, idx) + (-999,)*8
+        return (img_id, idx, -999, -999, -999, -999, -999, -999, -999, -999, xcoord, ycoord)
     rmask = identify_river(wmask, lines, transform)
-    return (img_id, idx, *count_pixels(rmask, cloud, snow, valid, transform, circle))
+    
+    return (img_id, idx, *count_pixels(rmask, cloud, snow, valid, transform, circle), xcoord, ycoord)
 
 
 def build_href_dict(df_in):
@@ -77,16 +83,22 @@ if __name__ == "__main__":
     # # inputs (replace with your paths)
     # squares = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\squares_15x_20251010.shp"
     # pills   = r"C:\path\gage_pills_3L_3W_20250904.shp"
+
+    outdir = r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results"
+    completed_files = os.listdir(outdir)
+
+    for year in [2018, 2019, 2020, 2021, 2022, 2023, 2024]:
+        if f'effwidths_{year}.csv' not in (completed_files):
+            break
+
+
+    
     circles = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\circles_3x_20251010.shp"
     clines  = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\Vector_centerlines\s2_platte_centerlines.shp"
-    href_csv= r"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_20251012.csv"
-    # href_csv = r"C:\Users\dego\Desktop\href_df_test.csv"
-    # work_csv= r"C:\path\work.csv"
-    outdir  = r"C:\Users\dego\Desktop"
+    href_csv=fr"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_{year}_20251012.csv"
+    pts =     r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\points_20251010.shp"
 
-    test_n = 100
-
-    href_df = pd.read_csv(href_csv).head(test_n).set_index(['img_id', 'iindex'])
+    href_df = pd.read_csv(href_csv).set_index(['img_id', 'iindex'])
     valid_iids = href_df.index.get_level_values(1).unique()
     HREFS_PARENT = build_href_dict(href_df)
     # work = pd.read_csv(work_csv)
@@ -101,10 +113,10 @@ if __name__ == "__main__":
     with ProcessPoolExecutor(max_workers=min(6, mp.cpu_count()),
                              mp_context=ctx,
                              initializer=_init_worker,
-                             initargs=(circles, clines, HREFS_PARENT, valid_iids)) as ex:
+                             initargs=(circles, clines, pts, HREFS_PARENT, valid_iids)) as ex:
         rows = list(tqdm(ex.map(_worker, records, chunksize=8), total=len(records)))
     out = pd.DataFrame(rows, columns=[
-        "img_id","iindex","n_pixels","n_valid","n_river","n_cloud","n_snow","n_cloudriver","n_edge","n_edgeriver"
+        "img_id","iindex","n_pixels","n_valid","n_river","n_cloud","n_snow","n_cloudriver","n_edge","n_edgeriver", "x", "y"
     ])
     os.makedirs(outdir, exist_ok=True)
-    out.to_csv(os.path.join(outdir, f"test_effwidths_{test_n}.csv"), index=False)
+    out.to_csv(os.path.join(outdir, f"effwidths_{year}.csv"), index=False)

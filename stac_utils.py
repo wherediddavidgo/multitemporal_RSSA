@@ -16,7 +16,7 @@ from pyproj import Transformer
 def ref_geoms_from_b3href(b3_href, poly_idx, effwidth_geoms, centerline_geoms):
     with rasterio.open(b3_href) as src:
         img_crs = src.crs
-    print(poly_idx)
+    # print(poly_idx)
     # view_geom = view_geoms.loc[poly_idx].geometry
     eff_geom = effwidth_geoms.loc[poly_idx].geometry
 
