@@ -18,6 +18,7 @@ from rasterio.features import geometry_mask, rasterize
 from rasterio.transform import from_bounds
 from rasterio.warp import reproject
 from rasterio.enums import Resampling
+from rasterio.vrt import WarpedVRT
 
 from shapely import bounds
 from shapely.geometry import box, mapping
@@ -28,6 +29,7 @@ from pyproj import Transformer
 # from google.colab import drive
 # from matplotlib import pyplot as plt
 # from matplotlib.colors import LinearSegmentedColormap
+from cv2 import dilate
 
 
 import tkinter as tk
@@ -39,40 +41,30 @@ import rasterio
 import numpy as np
 import glob
 import os
-import itertools
+import tqdm
 from datetime import datetime
 import sys
 
 sys.path.append(r'C:\Users\dego\AppData\Local\Programs\Python\Python313\Lib\site-packages')
 sys.path.append(r'C:\Users\dego\AppData\Local\Programs\Python\Python313\Scripts')
-import gdown
+# import gdown
 from pystac_client import Client as stac_client
 
 
-def search_stac_by_id(img_id):
-    search = stac.search(collections=['sentinel-2-l2a'],
-                         ids = [img_id],
-                         fields={'include': ['id', 'assets.B03', 'assets.B08', 'assets.SCL', 'bbox', 'properties.datetime']})
-
-    return list(search.items())[0]
 
 
 
-def ref_geoms(img, poly_idx, view_geoms, otsu_geoms, effwidth_geoms, centerline_geoms):
-    b3_href = img.assets["green"].href
+def ref_geoms_from_b3href(b3_href, poly_idx, view_geoms, effwidth_geoms, centerline_geoms):
     with rasterio.open(b3_href) as src:
         img_crs = src.crs
+    # print(poly_idx)
+    view_geom = view_geoms.set_index('iindex').loc[poly_idx].geometry
+    eff_geom = effwidth_geoms.set_index('iindex').loc[poly_idx].geometry
 
-    view_geom  = view_geoms.loc[poly_idx].geometry
-    otsu_geom  = otsu_geoms.loc[poly_idx].geometry
-    eff_geom   = effwidth_geoms.loc[poly_idx].geometry
-
-    t_view  = Transformer.from_crs(view_geoms.crs, img_crs,  always_xy=True).transform
-    t_otsu  = Transformer.from_crs(otsu_geoms.crs, img_crs,  always_xy=True).transform
-    t_eff   = Transformer.from_crs(effwidth_geoms.crs, img_crs, always_xy=True).transform
+    t_view = Transformer.from_crs(view_geoms.crs, img_crs,  always_xy=True).transform
+    t_eff = Transformer.from_crs(effwidth_geoms.crs, img_crs, always_xy=True).transform
 
     view_src = shp_transform(t_view, view_geom)
-    otsu_src = shp_transform(t_otsu, otsu_geom)
     eff_src  = shp_transform(t_eff,  eff_geom)
 
     # Filter lines by intersection in image CRS, then reproject only those (cheap)
@@ -80,10 +72,11 @@ def ref_geoms(img, poly_idx, view_geoms, otsu_geoms, effwidth_geoms, centerline_
         cl_img = centerline_geoms.to_crs(img_crs)
     else:
         cl_img = centerline_geoms
-    hits = list(cl_img.sindex.query(otsu_src, predicate="intersects"))
+    hits = list(cl_img.sindex.query(eff_src, predicate="intersects"))
     lines_in_bound = cl_img.iloc[hits].copy()
 
-    return view_src, otsu_src, eff_src, lines_in_bound
+    return view_src, eff_src, lines_in_bound
+
 
 def dn_to_reflectance(band):
     return np.float32(band) * 1e-4
@@ -96,70 +89,61 @@ def normalized_difference(b1, b2):
 
 
 
-def process_image(img, view_geom, otsu_geom):
-    b3_href = img.assets['green'].href
-    b8_href = img.assets['nir'].href
-    scl_href = img.assets['scl'].href
 
-    l, b, r, t = view_geom.bounds
-
+def process_image_from_hrefs(b3_href, b8_href, scl_href, view_geom, otsu_geom):
+    l, b, r, t = map(float, view_geom.bounds)
 
     with rasterio.open(b3_href) as b3_src:
-        wwindow = rasterio.windows.from_bounds(l, b, r, t, b3_src.transform).round_offsets().round_lengths()
-        # cwindow = rasterio.windows.from_bounds(l, b, r, t, scl_src.transform)
+        window = rasterio.windows.from_bounds(l, b, r, t, b3_src.transform).round_offsets().round_lengths()
+        transform = b3_src.window_transform(window)
 
-        wwindow_transform = b3_src.window_transform(wwindow)    
-        # cwindow_transform = scl_src.window_transform(cwindow)
+        h, w = window.height, window.width
 
-        b3v = b3_src.read(1, window=wwindow, masked=True)
-        h, w = wwindow.height, wwindow.width
+        if h == 0 or w == 0:
+            return np.array([1]), None, None, None, None, None
+
+        b3v = b3_src.read(1, window=window, masked=True)
+        b3_crs = b3_src.crs
 
     with rasterio.open(b8_href) as b8_src:
-        b8v = b8_src.read(1, window=wwindow, masked=True)
+        b8v = b8_src.read(1, window=window, masked=True)
 
-    with rasterio.open(scl_href) as scl_src:
-        sclv = scl_src.read(1, window=rasterio.windows.from_bounds(l, b, r, t, transform=scl_src.transform).round_offsets().round_lengths(), out_shape=(1, h, w), resampling=Resampling.nearest)
+    with rasterio.open(scl_href) as scl_src, WarpedVRT(
+        scl_src, crs=b3_crs, transform=transform, width=w, height=h, resampling=Resampling.nearest
+    ) as vrt:
+        sclv = vrt.read(1)
 
-    sclv = np.ma.MaskedArray(sclv, mask=np.zeros_like(sclv, dtype=bool))
     b3v = dn_to_reflectance(b3v)
     b8v = dn_to_reflectance(b8v)
-    
     ndwi_v = normalized_difference(b3v, b8v)
-    # print(ndwi_v.min())
-    # print(ndwi_v.max())
+    otsu_geom_mask = geometry_mask([otsu_geom], out_shape=(h, w), transform=transform, invert=True)
+    # return otsu_geom_mask, ndwi_v
+    if otsu_geom_mask.size <= ndwi_v.size:
+        ndwi_o = np.ma.array(ndwi_v, mask=~otsu_geom_mask).compressed()
+        b8o = np.ma.array(b8v, mask=~otsu_geom_mask).compressed()
 
-    otsu_geom_mask = geometry_mask([otsu_geom], out_shape=(h, w), transform=wwindow_transform, invert=True)
+        if ndwi_o.size >= 10:
+            ndwi_threshold = threshold_otsu(ndwi_o)
+            nir_threshold = threshold_otsu(b8o)
+        else:
+            ndwi_threshold = 1
+            nir_threshold = 1
 
-    ndwi_o = np.ma.array(ndwi_v, mask=~otsu_geom_mask).compressed()
-    b8o = np.ma.array(b8v, mask=~otsu_geom_mask).compressed()
+        wmask = (ndwi_v >= ndwi_threshold) & (b8v <= nir_threshold)
+        cloudmask = np.isin(sclv, [7, 8, 9]).astype('uint8')
+        snowmask = (sclv == 11).astype('uint8')
+        ndmask = (sclv != 0).astype('uint8')
 
-    if ndwi_o.size >= 10:
-        ndwi_threshold = threshold_otsu(ndwi_o)
-        nir_threshold = threshold_otsu(b8o)
+        return ndwi_v, wmask, cloudmask, snowmask, ndmask, transform, ndwi_threshold, nir_threshold
     else:
-        ndwi_threshold = 1
-        nir_threshold = 1
-
-    # print(ndwi_threshold)
-    # print(nir_threshold)
-
-
-    wmask = (ndwi_v >= ndwi_threshold) & (b8v <= nir_threshold)
-
-    cloudmask = np.isin(sclv, [7, 8, 9]).astype('uint8')
-    snowmask = (sclv == 11).astype('uint8')
-
-    return ndwi_v, wmask, cloudmask, snowmask, wwindow_transform
+        return np.array([1]), None, None, None, None, None, None, None
 
 
 def identify_river(wmask, lines, window_trans):
-    # vcl_reproj = vector_centerlines.to_crs(img_crs)
-    # line_nos_in_bounds = list(vcl_reproj.sindex.query(otsu_geom, predicate='intersects'))
-    # lines_in_bound = vcl_reproj.iloc[line_nos_in_bounds]
     h, w = wmask.shape
     wbool = wmask.filled(0) > 0
-    rbuffs = lines.copy().buffer(5)
-    shapes = ((geom, 1) for geom in rbuffs)
+    # rbuffs = lines.copy().buffer(5)
+    shapes = ((geom, 1) for geom in lines.geometry)
     river_seed = rasterize(
         shapes=shapes,
         out_shape= (h, w),
@@ -173,31 +157,35 @@ def identify_river(wmask, lines, window_trans):
     return river_mask
 
 
-def GENERATE_MASKS(img_id, poly_idx, squares, pills, circles, vector_centerlines):
-    image = search_stac_by_id(img_id)
+def count_pixels(rmask, cloudmask, snowmask, ndmask, transform, circle, ndwi_v):
+    if rmask is not None:
+        circle_mask = rasterize([circle], out_shape = rmask.shape, transform=transform, dtype='uint8', all_touched=True) == 1
 
-    square, pill, circle_geom, lines = ref_geoms(image, poly_idx, squares, pills, circles, vector_centerlines)
+        kernel = np.array([[0, 1, 0],
+                        [1, 1, 1],
+                        [0, 1, 0]]).astype('uint8')
 
-    ndwi_v, wmask, cloudmask, snowmask, wwindow_transform = process_image(image, square, pill)
+        ring_mask = dilate(circle_mask.astype('uint8'), kernel, iterations=1) & ~circle_mask
 
-    rmask = identify_river(wmask, lines, wwindow_transform)
+        r = rmask.astype(bool)
+        c = cloudmask.astype(bool)
+        s = snowmask.astype(bool)
+        v = ndmask.astype(bool)
 
-    # circle_mask, n_river, n_cloud, n_snow = count_pixels(rmask, cloudmask, snowmask, wwindow_transform, circle_geom)
+        n_pixels = np.count_nonzero(circle_mask)
+        n_valid = np.count_nonzero(circle_mask & v)
+        n_river = np.count_nonzero(circle_mask & r)
+        n_cloud = np.count_nonzero(circle_mask & c)
+        n_snow = np.count_nonzero(circle_mask & s)
+        n_cloudriver = np.count_nonzero(circle_mask & r & c)
 
+        n_edge = np.count_nonzero(ring_mask)
+        n_edgeriver = np.count_nonzero(ring_mask & r)
 
-    return ndwi_v, rmask, cloudmask, snowmask, wwindow_transform, circle_geom
-    
+        return n_pixels, n_valid, n_river, n_cloud, n_snow, n_cloudriver, n_edge, n_edgeriver, np.nanmean(np.where(circle_mask, ndwi_v, np.nan))
 
-    
-
-def count_pixels(rmask, cloudmask, snowmask, transform, circle):
-    circle_mask = rasterize([circle], out_shape = rmask.shape, transform=transform, dtype='uint8', all_touched=True) == 1
-
-    n_river = (circle_mask & rmask).sum()
-    n_cloud = (circle_mask & cloudmask).sum()
-    n_snow = (circle_mask & snowmask).sum()
-
-    return circle_mask, n_river, n_cloud, n_snow
+    else:
+        return -999, -999, -999, -999, -999, -999, -999, -999
     
 
 class TifViewerApp:
@@ -240,6 +228,7 @@ class TifViewerApp:
         self.ndwi_artist = None  # will hold the AxesImage object
         self.wm_artist = None
         self.cm_artist = None
+    
 
 
         rm_cdict = {
@@ -252,7 +241,7 @@ class TifViewerApp:
             'alpha': [[0.0, 0.0, 0.0], 
                       [1.0, 0.35, 1.0]]
         }
-        self.rm_cmap = LinearSegmentedColormap('custom_cmap', segmentdata=rm_cdict)
+        self.rm_cmap = LinearSegmentedColormap('custom_cmap1', segmentdata=rm_cdict)
 
         cm_cdict = {
             'red':   [[0.0, 0.0, 0.0],
@@ -264,7 +253,19 @@ class TifViewerApp:
             'alpha': [[0.0, 0.0, 0.0], 
                       [1.0, 0.2, 1.0]]
         }
-        self.cm_cmap = LinearSegmentedColormap('custom_cmap', segmentdata=cm_cdict)
+        self.cm_cmap = LinearSegmentedColormap('custom_cmap2', segmentdata=cm_cdict)
+
+        sm_cdict = {
+            'red':   [[0.0, 0.0, 0.0],
+                      [1.0, 0.0, 0.0]],
+            'green': [[0.0, 0.0, 0.0],
+                      [1.0, 1.0, 0.0]],
+            'blue':  [[0.0, 0.0, 0.0],
+                      [1.0, 0.0, 0.0]],
+            'alpha': [[0.0, 0.0, 0.0], 
+                      [1.0, 0.2, 1.0]]
+        }
+        self.sm_cmap = LinearSegmentedColormap('custom_cmap3', segmentdata=sm_cdict)
 
         self.i = -1
         self.img_id = None
@@ -355,43 +356,75 @@ class TifViewerApp:
         self.disliked_ids.clear()
         self.liked_ids.clear()
 
-    def show_plot(self):
 
+    def show_plot(self):
+        
         if self.i < 0:
             self.advance()
         if self.i < 0 or self.i >= len(img_ids):
             return
+        
+        if (self.img_id in (Qdf.img_id.unique())) and (self.poly_id in (Qdf.iindex.unique())):
+            Q_cms = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'Q_cms']
+            Qperc = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'Q_percentile']
+        else: 
+            Qperc = -999
+            Q_cms = -999
 
-        ndwi, rmask, cloudmask, snowmask, wwindow_transform, circle = GENERATE_MASKS(self.img_id, int(self.poly_id), squares, pills, circles, vector_centerlines)
-        # cloudmask = GENERATE_MASKS(current_img_id, current_poly_iidx, squares, pil, circles, vector_centerlines)
-        # print(circlemask)
-        # print('---------------------------------------------------')
-        ndwi = np.uint8(np.clip((ndwi + 1) * 255 / 2, 0, 255))
-        if self.wm_artist is None:
+        b3 = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'b3_href']
+        b8 = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'b8_href']
+        scl = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'scl_href']
 
-            self.ax.clear()
-            self.ndwi_artist = show(ndwi, vmin=0, vmax=255, cmap='Greys_r', ax=self.ax, transform=wwindow_transform)
-            self.rm_artist = show(rmask, cmap=self.rm_cmap, vmin=0, vmax=1, ax=self.ax, transform=wwindow_transform)
-            self.cm_artist = show(cloudmask, cmap = self.cm_cmap, vmin=0, vmax=1, ax=self.ax, transform=wwindow_transform)
-            self.circle_artist = gpd.GeoSeries([circle]).plot(ax=self.ax, facecolor='none')
-            # self.mask_artist = show(circle_mask & rmask, cmap=self.rm_cmap, ax=self.ax, transform=wwindow_transform)
+        square, circle, lines = ref_geoms_from_b3href(b3, int(self.poly_id), squares, circles, vector_centerlines)
+
+        ndwi, wmask, cloud, snow, valid, transform, ndwi_threshold, nir_threshold = process_image_from_hrefs(b3, b8, scl, square, circle)
+        
+        if (valid) is not None:
+            ndwi = (ndwi + 1) * 127.5
+            rmask = identify_river(wmask, lines, transform)
+
+            # print(np.unique(rmask.data))
+            if self.wm_artist is None:
+
+                self.ax.clear()
+                self.ndwi_artist = show(ndwi.data, vmin=0, vmax=255, cmap='Greys_r', ax=self.ax, transform=transform)
+                self.rm_artist = show(rmask, cmap=self.rm_cmap, vmin=0, vmax=1, ax=self.ax, transform=transform)
+                self.cm_artist = show(cloud, cmap =self.cm_cmap, vmin=0, vmax=1, ax=self.ax, transform=transform)
+                self.sm_artist = show(snow, cmap=self.sm_cmap, vmin=0, vmax=1, ax=self.ax, transform=transform)
+                self.circle_artist = gpd.GeoSeries([circle]).plot(ax=self.ax, facecolor='none', edgecolor='tab:blue')
+                self.line_artist = lines.plot(ax=self.ax, color='tab:blue')
+                self.title_artist = self.ax.set_title(self.img_name)
+                self.desc_artist = self.ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}')
+
+
+                # n_pixels, n_valid, n_river, n_cloud, n_snow, n_cloudriver, n_edge, n_edgeriver, mean_ndwi = count_pixels(rmask, cloud, snow, valid, transform, circle, ndwi)
+
+                # print(n_pixels)
+                # print(n_valid)
+                # print(n_river)
+                # print(' ')
+            else:
+
+                self.ndwi_artist.set_data(ndwi)
+                self.rm_artist.set_data(rmask)
+                self.cm_artist.set_data(cloud)
+                self.sm_artist.set_data(snow)
+                self.circle_artist.set_data(gpd.GeoSeries([circle]))
+                self.line_artist.set_data(lines)
+                self.ax.relim()
+                self.ax.autoscale_view()
+                self.title_artist.set_title(self.img_name)
+                self.desc_artist.set_xlabel('0')
+                # print(ndwi[10])
+
+            self.canvas.draw()
+
+        else: 
             self.title_artist = self.ax.set_title(self.img_name)
+            self.ndwi_artist = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), ax=self.ax)
 
 
-        else:
 
-            self.ndwi_artist.set_data(ndwi)
-            self.rm_artist.set_data(rmask)
-            self.cm_artist.set_data(cloudmask)
-            # self.mask_artist.set_data(n_river)
-            self.circle_artist.set_data(gpd.GeoSeries([circle]))
-            self.ax.relim()
-            self.ax.autoscale_view()
-            self.title_artist.set_title(self.img_name)
-            # print(ndwi[10])
-
-        self.canvas.draw()
-        # self.lbl_iid['text'] = self.img_name
 
 if __name__ == "__main__":
     ### load assets
@@ -410,63 +443,65 @@ if __name__ == "__main__":
     
     
     
-    # download assets from google drive using gdown package
-    asset_loc = f'C:/Users/{dst}/Documents/river_tinder_assets'
+    # # download assets from google drive using gdown package
+    # asset_loc = f'C:/Users/{dst}/Documents/river_tinder_assets'
 
-    if (glob.glob(f'{asset_loc}/gage_sites/*')) == []:
-        gage_sites_url = 'https://drive.google.com/drive/folders/1g8rcfbHuIaF1Zad91O_FATsQyncmm0vY?usp=sharing'
-        centerline_url = 'https://drive.google.com/drive/folders/1HFiBh-X1xtvoXDqFq5KYup7vc1hq3Xn-?usp=sharing'
-        all_sites_url = 'https://drive.google.com/drive/folders/1f19N2qtnHmfCidoTp00tHcG1JBC9fPcv?usp=sharing'
+    # if (glob.glob(f'{asset_loc}/gage_sites/*')) == []:
+    #     gage_sites_url = 'https://drive.google.com/drive/folders/1g8rcfbHuIaF1Zad91O_FATsQyncmm0vY?usp=sharing'
+    #     centerline_url = 'https://drive.google.com/drive/folders/1HFiBh-X1xtvoXDqFq5KYup7vc1hq3Xn-?usp=sharing'
+    #     all_sites_url = 'https://drive.google.com/drive/folders/1f19N2qtnHmfCidoTp00tHcG1JBC9fPcv?usp=sharing'
 
-        gdown.download_folder(url=gage_sites_url, output=f'{asset_loc}/gage_sites', quiet=False, use_cookies=True)
-        gdown.download_folder(url=centerline_url, output=f'{asset_loc}/centerline', quiet=False, use_cookies=True)
-        gdown.download_folder(url=all_sites_url, output=f'{asset_loc}/all_sites', quiet=False, use_cookies=True)
+    #     gdown.download_folder(url=gage_sites_url, output=f'{asset_loc}/gage_sites', quiet=False, use_cookies=True)
+    #     gdown.download_folder(url=centerline_url, output=f'{asset_loc}/centerline', quiet=False, use_cookies=True)
+    #     gdown.download_folder(url=all_sites_url, output=f'{asset_loc}/all_sites', quiet=False, use_cookies=True)
 
 
     # load assets for processing
-    squares = gpd.read_file(f'{asset_loc}/gage_sites/gage_squares_15x_20250909.shp')\
-        .set_index('iindex', drop=False)\
-        .to_crs('EPSG:4326')
+    squares = gpd.read_file(f'C:/Users/dego/Documents/local_files/RSSA/Platte_centerlines_masks/squares_15x_20251010.shp')\
+        .set_index('iindex', drop=False)
+        # .to_crs('EPSG:4326')
 
-    pills = gpd.read_file(f'{asset_loc}/gage_sites/gage_pills_3L_3W_20250909.shp')\
-        .set_index('iindex', drop=False)\
-        .to_crs('EPSG:4326')
+    # pills = gpd.read_file(f'{asset_loc}/gage_sites/gage_pills_3L_3W_20250909.shp')\
+    #     .set_index('iindex', drop=False)\
+    #     .to_crs('EPSG:4326')
 
 
-    circles = gpd.read_file(f'{asset_loc}/gage_sites/gage_circles_3x_20250909.shp')\
-        .set_index('iindex', drop=False)\
-        .to_crs('EPSG:4326')
+    circles = gpd.read_file(f'C:/Users/dego/Documents/local_files/RSSA/Platte_centerlines_masks/circles_3x_20251010.shp')\
+        .set_index('iindex', drop=False)
+        # .to_crs('EPSG:4326')
     
-    checked_img_path = 'C:/Users/dego/Documents/river_tinder_assets/gage_sites/likes_dislikes'
-    lols = []
-    for fn in (glob.glob(os.path.join(checked_img_path, '*.txt'))):
-        with open(fn, 'r') as f:
-            lines = [line.strip() for line in f.readlines()]
-        lols.append(lines)
+    # checked_img_path = 'C:/Users/dego/Documents/river_tinder_assets/gage_sites/likes_dislikes'
+    # lols = []
+    # for fn in (glob.glob(os.path.join(checked_img_path, '*.txt'))):
+    #     with open(fn, 'r') as f:
+    #         lines = [line.strip() for line in f.readlines()]
+    #     lols.append(lines)
 
-    checked_name_list = list(itertools.chain.from_iterable(lols))
+    # checked_name_list = list(itertools.chain.from_iterable(lols))
 
-    checked_img_ids = []
-    checked_iidxes = []
-    checked_names = []
+    Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
+    Qdf['iindex'] = np.uint64(Qdf['iindex'])
 
-    for name in set(checked_name_list):
-        img_id = str(name[0:24])
-        iidx = int(name[25:])
-        checked_img_ids.append(img_id)
-        checked_iidxes.append(iidx)
-        checked_names.append(name)
+    # checked_img_ids = []
+    # checked_iidxes = []
+    # checked_names = []
 
-    print(len(checked_img_ids))
-    print(len(checked_iidxes))
-    print(len(checked_names))
+    # for name in set(checked_name_list):
+    #     img_id = str(name[0:24])
+    #     iidx = int(name[25:])
+    #     checked_img_ids.append(img_id)
+    #     checked_iidxes.append(iidx)
+    #     checked_names.append(name)
+
+    # print(len(checked_img_ids))
+    # print(len(checked_iidxes))
+    # print(len(checked_names))
     
-    checked_df = pd.DataFrame({'img_id': checked_img_ids, 'iindex': checked_iidxes, 'name': checked_names}).set_index('name')
-    checked_df.to_csv('C:/Users/dego/Desktop/checked_df2.csv')
+    # checked_df = pd.DataFrame({'img_id': checked_img_ids, 'iindex': checked_iidxes, 'name': checked_names}).set_index('name')
+    # checked_df.to_csv('C:/Users/dego/Desktop/checked_df2.csv')
     # print(checked_df)
     # print('n checked ids: ', len(checked_df))
-    vector_centerlines = gpd.read_file(f'{asset_loc}/centerline/s2_platte_centerlines_4326.shp')
-    print('poop3')
+    vector_centerlines = gpd.read_file(f'C:/Users/dego/Documents/river_tinder_assets/centerline/s2_platte_centerlines_4326.shp')
     # normal mode
     {
     # imgs_w_ids = pd.read_csv(f'{asset_loc}/gage_sites/gage_stac_ids_iidx_clouds_lt20.csv')
@@ -478,13 +513,27 @@ if __name__ == "__main__":
     
     
     # spot check mode, use to see same day gage and satellite width measurements
-    imgs_w_ids = pd.read_csv(f'{asset_loc}/gage_sites/sameday_sat_gage_width.csv')
-    imgs_w_ids = imgs_w_ids[['img_id', 'iindex']]
-    imgs_w_ids = imgs_w_ids.set_index(pd.Series([f'{a}_{b}' for a, b in zip(imgs_w_ids['img_id'], imgs_w_ids['iindex'])]))
-    unchecked_ids = imgs_w_ids[~imgs_w_ids[['img_id', 'iindex']].isin(checked_df[['img_id', 'iindex']]).all(axis=1)]
-    print(unchecked_ids)
-    # print(checked_df.dtypes)
-    # print(imgs_w_ids.dtypes)
+    imgs_w_ids = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_20251012.csv")
+    imgs_w_ids['iindex'] = np.uint64(imgs_w_ids['iindex'])
+    imgs_w_ids['date'] = pd.to_datetime(imgs_w_ids['date'])
+    imgs_w_ids = pd.merge(imgs_w_ids, Qdf, on=['img_id', 'iindex'], how='outer')
+
+
+
+    imgs_w_ids = imgs_w_ids.loc[imgs_w_ids.Q_cms >= 0]
+    imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 82571)]
+
+    imgs_w_ids = imgs_w_ids.sort_values('Q_percentile')
+
+    imgs_w_ids = imgs_w_ids.drop_duplicates(['img_id', 'iindex'])
+    imgs_w_ids['w_percentile'] = imgs_w_ids.groupby('iindex')['sat_width_m'].rank(pct=True)
+
+    # imgs_w_ids = imgs_w_ids.set_index(pd.Series([f'{a}_{b}' for a, b in zip(imgs_w_ids['img_id'], imgs_w_ids['iindex'])]))
+    
+    unchecked_ids = imgs_w_ids.copy()
+    # [~imgs_w_ids[['img_id', 'iindex']].isin(checked_df[['img_id', 'iindex']]).all(axis=1)]
+    
+    
 
     iidxes = unchecked_ids['iindex']
     img_ids = unchecked_ids['img_id']
@@ -499,7 +548,94 @@ if __name__ == "__main__":
     stac = stac_client.open('https://earth-search.aws.element84.com/v1')
 
 
-    print('poop1')
+
+
+    rm_cdict = {
+        'red':   [[0.0, 0.0, 0.0],
+                    [1.0, 1.0, 1.0]],
+        'green': [[0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0]],
+        'blue':  [[0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0]],
+        'alpha': [[0.0, 0.0, 0.0], 
+                    [1.0, 0.35, 1.0]]
+    }
+    rm_cmap = LinearSegmentedColormap('custom_cmap1', segmentdata=rm_cdict)
+
+    cm_cdict = {
+        'red':   [[0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0]],
+        'green': [[0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0]],
+        'blue':  [[0.0, 0.0, 0.0],
+                    [1.0, 1.0, 0.0]],
+        'alpha': [[0.0, 0.0, 0.0], 
+                    [1.0, 0.2, 1.0]]
+    }
+    cm_cmap = LinearSegmentedColormap('custom_cmap2', segmentdata=cm_cdict)
+
+    sm_cdict = {
+        'red':   [[0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0]],
+        'green': [[0.0, 0.0, 0.0],
+                    [1.0, 1.0, 0.0]],
+        'blue':  [[0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0]],
+        'alpha': [[0.0, 0.0, 0.0], 
+                    [1.0, 0.2, 1.0]]
+    }
+    sm_cmap = LinearSegmentedColormap('custom_cmap3', segmentdata=sm_cdict)
+
+    fig, ax = plt.subplots()
+    transform = rasterio.Affine(10.0, 0.0, 199980.0,
+                                0.0, -10.0, 4600020.0)
+    ndwi_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), vmin=0, vmax=255, cmap='Greys_r', ax=ax, transform=transform)
+    rm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=rm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
+    cm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=cm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
+    sm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=sm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
+
+    for i, row in tqdm.tqdm(imgs_w_ids.iterrows()):
+
+        img_id = row['img_id']
+        poly_id = row['iindex']
+
+        if (img_id in (Qdf.img_id.unique())) and (poly_id in (Qdf.iindex.unique())):
+            Q_cms = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'Q_cms']
+            Qperc = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'Q_percentile']
+            w_m = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'sat_width_m']
+            wperc = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'w_percentile']
+        else: 
+            Qperc = -999
+            Q_cms = -999
+
+        b3 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b3_href']
+        b8 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b8_href']
+        scl = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'scl_href']
+
+        square, circle, lines = ref_geoms_from_b3href(b3, int(poly_id), squares, circles, vector_centerlines)
+
+        ndwi, wmask, cloud, snow, valid, transform, ndwi_threshold, nir_threshold = process_image_from_hrefs(b3, b8, scl, square, circle)
+
+        if (valid) is not None:
+
+            fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
+
+            ndwi = (ndwi + 1) * 127.5
+            rmask = identify_river(wmask, lines, transform)
+
+            show(ndwi, vmin=0, vmax=255, cmap='Greys_r', ax=ax, transform=transform)
+            show(rmask, vmin=0, vmax=1, cmap=rm_cmap, ax=ax, transform=transform)
+            show(cloud, vmin=0, vmax=1, cmap=cm_cmap, ax=ax, transform=transform)
+            show(snow, vmin=0, vmax=1, cmap=sm_cmap, ax=ax, transform=transform)
+            gpd.GeoSeries([circle]).plot(ax=ax, facecolor='none', edgecolor='tab:blue')
+            lines.plot(ax=ax, color='tab:blue')
+            ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}\nWidth = {w_m:.02f} m\nWidth percentile = {wperc:.02f}')
+            ax.set_title(f'{img_id}_{poly_id}')
+
+            fig.savefig(f'C:/Users/dego/Documents/local_files/RSSA/RT_exports/{img_id}_{poly_id}.png', dpi=100)
+            plt.close(fig)
+
+
     ### gui stuff
     root = tk.Tk()
     app = TifViewerApp(root)
