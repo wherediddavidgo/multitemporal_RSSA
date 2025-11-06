@@ -85,8 +85,8 @@ def process_image_from_hrefs(b3_href, b8_href, scl_href, view_geom, otsu_geom):
             ndwi_threshold = threshold_otsu(ndwi_o)
             nir_threshold = threshold_otsu(b8o)
 
-            ndwi_threshold = -0.29
-            nir_threshold = 0.25
+            # ndwi_threshold = -0.29
+            # nir_threshold = 0.25
         else:
             ndwi_threshold = 1
             nir_threshold = 1
