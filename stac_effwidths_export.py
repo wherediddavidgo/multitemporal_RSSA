@@ -88,36 +88,39 @@ if __name__ == "__main__":
     outdir = r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results"
     completed_files = os.listdir(outdir)
 
-    for year in [2018, 2019, 2020, 2021, 2022, 2023, 2024]:
-        if f'effwidths_{year}.csv' not in (completed_files):
-            break
+        # for year in [2018, 2019, 2020, 2021, 2022, 2023, 2024]:
 
 
     squares = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\squares_15x_20251010.shp"
     circles = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\circles_3x_20251010.shp"
     clines  = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\Vector_centerlines\s2_platte_centerlines.shp"
-    href_csv=fr"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_{year}_20251012.csv"
+    href_csv= r"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_20251012.csv"
     pts =     r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\points_20251010.shp"
+    for pt in [225563, 68053, 82571]:
+        if f'effwidths_{pt}_029.csv' not in (completed_files):
+            
 
-    href_df = pd.read_csv(href_csv).set_index(['img_id', 'iindex'])
-    valid_iids = href_df.index.get_level_values(1).unique()
-    HREFS_PARENT = build_href_dict(href_df)
-    # work = pd.read_csv(work_csv)
-    # work["img_id"] = work["img_id"].astype(str)
-    # work["iindex"] = work["iindex"].astype(int)
+            href_df = pd.read_csv(href_csv)
+            href_df = href_df.loc[href_df.iindex == pt]
+            href_df = href_df.set_index(['img_id', 'iindex'])
+            valid_iids = href_df.index.get_level_values(1).unique()
+            HREFS_PARENT = build_href_dict(href_df)
+            # work = pd.read_csv(work_csv)
+            # work["img_id"] = work["img_id"].astype(str)
+            # work["iindex"] = work["iindex"].astype(int)
 
-    # records = list(zip(href_df["img_id"].tolist(), href_df["iindex"].tolist()))
-    records = href_df.index.tolist()
-    # print(records)
+            # records = list(zip(href_df["img_id"].tolist(), href_df["iindex"].tolist()))
+            records = href_df.index.tolist()
+            # print(records)
 
-    ctx = mp.get_context("spawn")  # explicit on Windows
-    with ProcessPoolExecutor(max_workers=min(6, mp.cpu_count()),
-                             mp_context=ctx,
-                             initializer=_init_worker,
-                             initargs=(squares, circles, clines, pts, HREFS_PARENT, valid_iids)) as ex:
-        rows = list(tqdm(ex.map(_worker, records, chunksize=8), total=len(records)))
-    out = pd.DataFrame(rows, columns=[
-        "img_id","iindex","n_pixels","n_valid","n_river","n_cloud","n_snow","n_cloudriver","n_edge","n_edgeriver", "x", "y"
-    ])
-    os.makedirs(outdir, exist_ok=True)
-    out.to_csv(os.path.join(outdir, f"effwidths_{year}.csv"), index=False)
+            ctx = mp.get_context("spawn")  # explicit on Windows
+            with ProcessPoolExecutor(max_workers=min(6, mp.cpu_count()),
+                                    mp_context=ctx,
+                                    initializer=_init_worker,
+                                    initargs=(squares, circles, clines, pts, HREFS_PARENT, valid_iids)) as ex:
+                rows = list(tqdm(ex.map(_worker, records, chunksize=8), total=len(records)))
+            out = pd.DataFrame(rows, columns=[
+                "img_id","iindex","n_pixels","n_valid","n_river","n_cloud","n_snow","n_cloudriver","n_edge","n_edgeriver", "x", "y"
+            ])
+            os.makedirs(outdir, exist_ok=True)
+            out.to_csv(os.path.join(outdir, f"effwidths_{pt}_029.csv"), index=False)
