@@ -123,8 +123,10 @@ def process_image_from_hrefs(b3_href, b8_href, scl_href, view_geom, otsu_geom):
         b8o = np.ma.array(b8v, mask=~otsu_geom_mask).compressed()
 
         if ndwi_o.size >= 10:
-            ndwi_threshold = threshold_otsu(ndwi_o)
-            nir_threshold = threshold_otsu(b8o)
+            # ndwi_threshold = threshold_otsu(ndwi_o)
+            # nir_threshold = threshold_otsu(b8o)
+            nir_threshold = 0.25
+            ndwi_threshold = -0.29
         else:
             ndwi_threshold = 1
             nir_threshold = 1
@@ -479,7 +481,8 @@ if __name__ == "__main__":
 
     # checked_name_list = list(itertools.chain.from_iterable(lols))
 
-    Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
+    # Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
+    Qdf = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results\effwidths_82571_029.csv")
     Qdf['iindex'] = np.uint64(Qdf['iindex'])
 
     # checked_img_ids = []
@@ -517,11 +520,16 @@ if __name__ == "__main__":
     imgs_w_ids['iindex'] = np.uint64(imgs_w_ids['iindex'])
     imgs_w_ids['date'] = pd.to_datetime(imgs_w_ids['date'])
     imgs_w_ids = pd.merge(imgs_w_ids, Qdf, on=['img_id', 'iindex'], how='outer')
+    # imgs_w_ids = 
 
 
 
     imgs_w_ids = imgs_w_ids.loc[imgs_w_ids.Q_cms >= 0]
-    imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 82571)]
+    imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 225563)]
+    # 245238
+    # 225563
+    # 68053
+    # 82571
 
     imgs_w_ids = imgs_w_ids.sort_values('Q_percentile')
 
@@ -594,6 +602,16 @@ if __name__ == "__main__":
     cm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=cm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
     sm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=sm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
 
+    img_id_list = []
+    poly_ids = []
+    Qpercs = []
+    Qs = []
+    wpercs = []
+    ws = []
+
+
+    plot_out = False
+    
     for i, row in tqdm.tqdm(imgs_w_ids.iterrows()):
 
         img_id = row['img_id']
@@ -608,33 +626,49 @@ if __name__ == "__main__":
             Qperc = -999
             Q_cms = -999
 
-        b3 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b3_href']
-        b8 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b8_href']
-        scl = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'scl_href']
+        img_id_list.append(img_id)
+        poly_ids.append(poly_id)
+        Qpercs.append(Qperc)
+        Qs.append(Q_cms)
+        wpercs.append(wperc)
+        ws.append(w_m)
 
-        square, circle, lines = ref_geoms_from_b3href(b3, int(poly_id), squares, circles, vector_centerlines)
+        if plot_out:
+            b3 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b3_href']
+            b8 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b8_href']
+            scl = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'scl_href']
 
-        ndwi, wmask, cloud, snow, valid, transform, ndwi_threshold, nir_threshold = process_image_from_hrefs(b3, b8, scl, square, circle)
+            square, circle, lines = ref_geoms_from_b3href(b3, int(poly_id), squares, circles, vector_centerlines)
 
-        if (valid) is not None:
+            ndwi, wmask, cloud, snow, valid, transform, ndwi_threshold, nir_threshold = process_image_from_hrefs(b3, b8, scl, square, circle)
 
-            fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
+            if (valid) is not None:
 
-            ndwi = (ndwi + 1) * 127.5
-            rmask = identify_river(wmask, lines, transform)
+                fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
 
-            show(ndwi, vmin=0, vmax=255, cmap='Greys_r', ax=ax, transform=transform)
-            show(rmask, vmin=0, vmax=1, cmap=rm_cmap, ax=ax, transform=transform)
-            show(cloud, vmin=0, vmax=1, cmap=cm_cmap, ax=ax, transform=transform)
-            show(snow, vmin=0, vmax=1, cmap=sm_cmap, ax=ax, transform=transform)
-            gpd.GeoSeries([circle]).plot(ax=ax, facecolor='none', edgecolor='tab:blue')
-            lines.plot(ax=ax, color='tab:blue')
-            ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}\nWidth = {w_m:.02f} m\nWidth percentile = {wperc:.02f}')
-            ax.set_title(f'{img_id}_{poly_id}')
+                ndwi = (ndwi + 1) * 127.5
+                rmask = identify_river(wmask, lines, transform)
 
-            fig.savefig(f'C:/Users/dego/Documents/local_files/RSSA/RT_exports/{img_id}_{poly_id}.png', dpi=100)
-            plt.close(fig)
+                show(ndwi, vmin=0, vmax=255, cmap='Greys_r', ax=ax, transform=transform)
+                show(rmask, vmin=0, vmax=1, cmap=rm_cmap, ax=ax, transform=transform)
+                show(cloud, vmin=0, vmax=1, cmap=cm_cmap, ax=ax, transform=transform)
+                show(snow, vmin=0, vmax=1, cmap=sm_cmap, ax=ax, transform=transform)
+                gpd.GeoSeries([circle]).plot(ax=ax, facecolor='none', edgecolor='tab:blue')
+                lines.plot(ax=ax, color='tab:blue')
+                ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}\nWidth = {w_m:.02f} m\nWidth percentile = {wperc:.02f}')
+                ax.set_title(f'{img_id}_{poly_id}')
 
+                fig.savefig(f'C:/Users/dego/Documents/local_files/RSSA/RT_exports/{img_id}_{poly_id}.png', dpi=100)
+                plt.close(fig)
+
+
+    percentile_comp_df = pd.DataFrame({'img_id': img_id_list,
+                                       'poly_id': poly_ids,
+                                       'Q_percentile': Qpercs,
+                                       'Q_cms': Qs,
+                                       'w_percentile': wpercs,
+                                       'width_m': ws})
+    percentile_comp_df.to_csv(f'C:/Users/dego/Desktop/percentile_comparison_{poly_id}_029.csv')
 
     ### gui stuff
     root = tk.Tk()
