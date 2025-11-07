@@ -481,9 +481,9 @@ if __name__ == "__main__":
 
     # checked_name_list = list(itertools.chain.from_iterable(lols))
 
-    # Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
-    Qdf = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results\effwidths_82571_029.csv")
-    Qdf['iindex'] = np.uint64(Qdf['iindex'])
+    Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
+    # Qdf = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results\effwidths_82571_029.csv")
+    # Qdf['iindex'] = np.uint64(Qdf['iindex'])
 
     # checked_img_ids = []
     # checked_iidxes = []
@@ -526,17 +526,17 @@ if __name__ == "__main__":
 
     imgs_w_ids = imgs_w_ids.loc[imgs_w_ids.Q_cms >= 0]
 
-    imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 245238)]
+    # imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 245238)]
     # 225563
     # 68053
     # 82571
 
-    imgs_w_ids = imgs_w_ids.sort_values('Q_percentile')
+    # imgs_w_ids = imgs_w_ids.sort_values('Q_percentile')
 
-    imgs_w_ids = imgs_w_ids.drop_duplicates(['img_id', 'iindex'])
-    imgs_w_ids['w_percentile'] = imgs_w_ids.groupby('iindex')['sat_width_m'].rank(pct=True)
+    # imgs_w_ids = imgs_w_ids.drop_duplicates(['img_id', 'iindex'])
+    # imgs_w_ids['w_percentile'] = imgs_w_ids.groupby('iindex')['sat_width_m'].rank(pct=True)
 
-    # imgs_w_ids = imgs_w_ids.set_index(pd.Series([f'{a}_{b}' for a, b in zip(imgs_w_ids['img_id'], imgs_w_ids['iindex'])]))
+    imgs_w_ids = imgs_w_ids.set_index(pd.Series([f'{a}_{b}' for a, b in zip(imgs_w_ids['img_id'], imgs_w_ids['iindex'])]))
     
     unchecked_ids = imgs_w_ids.copy()
     # [~imgs_w_ids[['img_id', 'iindex']].isin(checked_df[['img_id', 'iindex']]).all(axis=1)]
@@ -594,81 +594,81 @@ if __name__ == "__main__":
     }
     sm_cmap = LinearSegmentedColormap('custom_cmap3', segmentdata=sm_cdict)
 
-    fig, ax = plt.subplots()
-    transform = rasterio.Affine(10.0, 0.0, 199980.0,
-                                0.0, -10.0, 4600020.0)
-    ndwi_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), vmin=0, vmax=255, cmap='Greys_r', ax=ax, transform=transform)
-    rm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=rm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
-    cm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=cm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
-    sm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=sm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
+    # fig, ax = plt.subplots()
+    # transform = rasterio.Affine(10.0, 0.0, 199980.0,
+    #                             0.0, -10.0, 4600020.0)
+    # ndwi_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), vmin=0, vmax=255, cmap='Greys_r', ax=ax, transform=transform)
+    # rm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=rm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
+    # cm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=cm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
+    # sm_im = show(np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0]]), cmap=sm_cmap, vmin=0, vmax=1, ax=ax, transform=transform)
 
-    img_id_list = []
-    poly_ids = []
-    Qpercs = []
-    Qs = []
-    wpercs = []
-    ws = []
+    # img_id_list = []
+    # poly_ids = []
+    # Qpercs = []
+    # Qs = []
+    # wpercs = []
+    # ws = []
 
 
-    plot_out = True
+    # plot_out = True
     
-    for i, row in tqdm.tqdm(imgs_w_ids.iterrows()):
+    # for i, row in tqdm.tqdm(imgs_w_ids.iterrows()):
 
-        img_id = row['img_id']
-        poly_id = row['iindex']
+    #     img_id = row['img_id']
+    #     poly_id = row['iindex']
 
-        if (img_id in (Qdf.img_id.unique())) and (poly_id in (Qdf.iindex.unique())):
-            Q_cms = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'Q_cms']
-            Qperc = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'Q_percentile']
-            w_m = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'sat_width_m']
-            wperc = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'w_percentile']
-        else: 
-            Qperc = -999
-            Q_cms = -999
+    #     if (img_id in (Qdf.img_id.unique())) and (poly_id in (Qdf.iindex.unique())):
+    #         Q_cms = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'Q_cms']
+    #         Qperc = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'Q_percentile']
+    #         w_m = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'sat_width_m']
+    #         wperc = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'w_percentile']
+    #     else: 
+    #         Qperc = -999
+    #         Q_cms = -999
 
-        img_id_list.append(img_id)
-        poly_ids.append(poly_id)
-        Qpercs.append(Qperc)
-        Qs.append(Q_cms)
-        wpercs.append(wperc)
-        ws.append(w_m)
+    #     img_id_list.append(img_id)
+    #     poly_ids.append(poly_id)
+    #     Qpercs.append(Qperc)
+    #     Qs.append(Q_cms)
+    #     wpercs.append(wperc)
+    #     ws.append(w_m)
 
-        if plot_out:
-            b3 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b3_href']
-            b8 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b8_href']
-            scl = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'scl_href']
+    #     if plot_out:
+    #         b3 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b3_href']
+    #         b8 = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'b8_href']
+    #         scl = imgs_w_ids.loc[(imgs_w_ids.img_id == img_id) & (imgs_w_ids.iindex == poly_id)].reset_index().loc[0, 'scl_href']
 
-            square, circle, lines = ref_geoms_from_b3href(b3, int(poly_id), squares, circles, vector_centerlines)
+    #         square, circle, lines = ref_geoms_from_b3href(b3, int(poly_id), squares, circles, vector_centerlines)
 
-            ndwi, wmask, cloud, snow, valid, transform, ndwi_threshold, nir_threshold = process_image_from_hrefs(b3, b8, scl, square, circle)
+    #         ndwi, wmask, cloud, snow, valid, transform, ndwi_threshold, nir_threshold = process_image_from_hrefs(b3, b8, scl, square, circle)
 
-            if (valid) is not None:
+    #         if (valid) is not None:
 
-                fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
+    #             fig, ax = plt.subplots(figsize=(6, 6), constrained_layout=True)
 
-                ndwi = (ndwi + 1) * 127.5
-                rmask = identify_river(wmask, lines, transform)
+    #             ndwi = (ndwi + 1) * 127.5
+    #             rmask = identify_river(wmask, lines, transform)
 
-                show(ndwi, vmin=0, vmax=255, cmap='Greys_r', ax=ax, transform=transform)
-                show(rmask, vmin=0, vmax=1, cmap=rm_cmap, ax=ax, transform=transform)
-                show(cloud, vmin=0, vmax=1, cmap=cm_cmap, ax=ax, transform=transform)
-                show(snow, vmin=0, vmax=1, cmap=sm_cmap, ax=ax, transform=transform)
-                gpd.GeoSeries([circle]).plot(ax=ax, facecolor='none', edgecolor='tab:blue')
-                lines.plot(ax=ax, color='tab:blue')
-                ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}\nWidth = {w_m:.02f} m\nWidth percentile = {wperc:.02f}')
-                ax.set_title(f'{img_id}_{poly_id}')
+    #             show(ndwi, vmin=0, vmax=255, cmap='Greys_r', ax=ax, transform=transform)
+    #             show(rmask, vmin=0, vmax=1, cmap=rm_cmap, ax=ax, transform=transform)
+    #             show(cloud, vmin=0, vmax=1, cmap=cm_cmap, ax=ax, transform=transform)
+    #             show(snow, vmin=0, vmax=1, cmap=sm_cmap, ax=ax, transform=transform)
+    #             gpd.GeoSeries([circle]).plot(ax=ax, facecolor='none', edgecolor='tab:blue')
+    #             lines.plot(ax=ax, color='tab:blue')
+    #             ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}\nWidth = {w_m:.02f} m\nWidth percentile = {wperc:.02f}')
+    #             ax.set_title(f'{img_id}_{poly_id}')
 
-                fig.savefig(f'C:/Users/dego/Documents/local_files/RSSA/RT_exports/{img_id}_{poly_id}.png', dpi=100)
-                plt.close(fig)
+    #             fig.savefig(f'C:/Users/dego/Documents/local_files/RSSA/RT_exports/{img_id}_{poly_id}.png', dpi=100)
+    #             plt.close(fig)
 
 
-    percentile_comp_df = pd.DataFrame({'img_id': img_id_list,
-                                       'poly_id': poly_ids,
-                                       'Q_percentile': Qpercs,
-                                       'Q_cms': Qs,
-                                       'w_percentile': wpercs,
-                                       'width_m': ws})
-    percentile_comp_df.to_csv(f'C:/Users/dego/Desktop/percentile_comparison_{poly_id}.csv')
+    # percentile_comp_df = pd.DataFrame({'img_id': img_id_list,
+    #                                    'poly_id': poly_ids,
+    #                                    'Q_percentile': Qpercs,
+    #                                    'Q_cms': Qs,
+    #                                    'w_percentile': wpercs,
+    #                                    'width_m': ws})
+    # percentile_comp_df.to_csv(f'C:/Users/dego/Desktop/percentile_comparison_{poly_id}.csv')
 
     ### gui stuff
     root = tk.Tk()
