@@ -525,8 +525,12 @@ if __name__ == "__main__":
 
 
     imgs_w_ids = imgs_w_ids.loc[imgs_w_ids.Q_cms >= 0]
+<<<<<<< Updated upstream
     imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 225563)]
     # 245238
+=======
+    imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 245238)]
+>>>>>>> Stashed changes
     # 225563
     # 68053
     # 82571
@@ -610,7 +614,11 @@ if __name__ == "__main__":
     ws = []
 
 
+<<<<<<< Updated upstream
     plot_out = False
+=======
+    plot_out = True
+>>>>>>> Stashed changes
     
     for i, row in tqdm.tqdm(imgs_w_ids.iterrows()):
 
@@ -668,7 +676,11 @@ if __name__ == "__main__":
                                        'Q_cms': Qs,
                                        'w_percentile': wpercs,
                                        'width_m': ws})
+<<<<<<< Updated upstream
     percentile_comp_df.to_csv(f'C:/Users/dego/Desktop/percentile_comparison_{poly_id}_029.csv')
+=======
+    percentile_comp_df.to_csv(f'C:/Users/dego/Desktop/percentile_comparison_{poly_id}.csv')
+>>>>>>> Stashed changes
 
     ### gui stuff
     root = tk.Tk()
