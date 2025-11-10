@@ -153,6 +153,7 @@ def get_NDWI(scene):
 
 
 def ADD_WATER_MASK(scene, polygon):
+def ADD_WATER_MASK(scene, polygon, dynamic=False):
     """Gets Otsu threshold for Sentinel 2 NIR band and McFeeters NDWI. Water pixels must have NIR values below the NIR threshold and MNDWI values above the MNDWI threshold.
     Intersection between NIR and MNDWI masks is the final water mask."""
     NDWI_scene = get_NDWI(scene)
@@ -161,6 +162,9 @@ def ADD_WATER_MASK(scene, polygon):
 
     nir_histo = nir_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'geometry': polygon, 'maxPixels': 1000000000}).get('B8')
     NDWI_histo = NDWI_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'geometry': polygon, 'maxPixels': 1000000000}).get('NDWI')
+    if dynamic:
+        nir_histo = nir_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'geometry': polygon, 'maxPixels': 1000000000}).get('B8')
+        NDWI_histo = NDWI_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'geometry': polygon, 'maxPixels': 1000000000}).get('NDWI')
 
 
     polygon_in_scene = ee.Algorithms.If(
@@ -173,16 +177,36 @@ def ADD_WATER_MASK(scene, polygon):
             polygon_in_scene,
             compute_otsu_threshold(nir_histo),
             2
+        polygon_in_scene = ee.Algorithms.If(
+            scene.geometry().intersects(polygon),
+            True,
+            False
         )
-    )
+        nir_threshold = ee.Number(
+            ee.Algorithms.If(
+                polygon_in_scene,
+                compute_otsu_threshold(nir_histo),
+                2
+            )
+        )
 
     NDWI_threshold = ee.Number(
         ee.Algorithms.If(
             polygon_in_scene,
             compute_otsu_threshold(NDWI_histo),
             2
+        NDWI_threshold = ee.Number(
+            ee.Algorithms.If(
+                polygon_in_scene,
+                compute_otsu_threshold(NDWI_histo),
+                2
+            )
         )
     )
+
+    if not dynamic:
+        nir_threshold = 0.20
+        NDWI_threshold = -0.15
 
     # nir_threshold = compute_otsu_threshold(nir_histo)
     # NDWI_threshold = compute_otsu_threshold(NDWI_histo)

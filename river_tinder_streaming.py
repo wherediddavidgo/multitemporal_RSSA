@@ -127,6 +127,8 @@ def process_image_from_hrefs(b3_href, b8_href, scl_href, view_geom, otsu_geom):
             # nir_threshold = threshold_otsu(b8o)
             nir_threshold = 0.25
             ndwi_threshold = -0.29
+            nir_threshold = 0.20
+            ndwi_threshold = -0.15
         else:
             ndwi_threshold = 1
             nir_threshold = 1
@@ -372,6 +374,12 @@ class TifViewerApp:
         else: 
             Qperc = -999
             Q_cms = -999
+        # if (self.img_id in (Qdf.img_id.unique())) and (self.poly_id in (Qdf.iindex.unique())):
+        #     Q_cms = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'Q_cms']
+        #     Qperc = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'Q_percentile']
+        # else: 
+        #     Qperc = -999
+        #     Q_cms = -999
 
         b3 = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'b3_href']
         b8 = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'b8_href']
@@ -397,6 +405,7 @@ class TifViewerApp:
                 self.line_artist = lines.plot(ax=self.ax, color='tab:blue')
                 self.title_artist = self.ax.set_title(self.img_name)
                 self.desc_artist = self.ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}')
+                # self.desc_artist = self.ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}')
 
 
                 # n_pixels, n_valid, n_river, n_cloud, n_snow, n_cloudriver, n_edge, n_edgeriver, mean_ndwi = count_pixels(rmask, cloud, snow, valid, transform, circle, ndwi)
@@ -417,6 +426,7 @@ class TifViewerApp:
                 self.ax.autoscale_view()
                 self.title_artist.set_title(self.img_name)
                 self.desc_artist.set_xlabel('0')
+                # self.desc_artist.set_xlabel('0')
                 # print(ndwi[10])
 
             self.canvas.draw()
@@ -483,6 +493,7 @@ if __name__ == "__main__":
 
     Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
     # Qdf = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results\effwidths_82571_029.csv")
+    # Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
     # Qdf['iindex'] = np.uint64(Qdf['iindex'])
 
     # checked_img_ids = []
@@ -517,14 +528,17 @@ if __name__ == "__main__":
     
     # spot check mode, use to see same day gage and satellite width measurements
     imgs_w_ids = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_20251012.csv")
+    imgs_w_ids = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_20251012.csv").sample(frac=1, random_state=1)
     imgs_w_ids['iindex'] = np.uint64(imgs_w_ids['iindex'])
     imgs_w_ids['date'] = pd.to_datetime(imgs_w_ids['date'])
     imgs_w_ids = pd.merge(imgs_w_ids, Qdf, on=['img_id', 'iindex'], how='outer')
     # imgs_w_ids = 
+    # imgs_w_ids = pd.merge(imgs_w_ids, Qdf, on=['img_id', 'iindex'], how='outer')
 
 
 
     imgs_w_ids = imgs_w_ids.loc[imgs_w_ids.Q_cms >= 0]
+    # imgs_w_ids = imgs_w_ids.loc[imgs_w_ids.Q_cms >= 0]
 
     # imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 245238)]
     # 225563
