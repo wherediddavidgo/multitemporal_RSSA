@@ -125,8 +125,6 @@ def process_image_from_hrefs(b3_href, b8_href, scl_href, view_geom, otsu_geom):
         if ndwi_o.size >= 10:
             # ndwi_threshold = threshold_otsu(ndwi_o)
             # nir_threshold = threshold_otsu(b8o)
-            nir_threshold = 0.25
-            ndwi_threshold = -0.29
             nir_threshold = 0.20
             ndwi_threshold = -0.15
         else:
@@ -368,12 +366,6 @@ class TifViewerApp:
         if self.i < 0 or self.i >= len(img_ids):
             return
         
-        if (self.img_id in (Qdf.img_id.unique())) and (self.poly_id in (Qdf.iindex.unique())):
-            Q_cms = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'Q_cms']
-            Qperc = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'Q_percentile']
-        else: 
-            Qperc = -999
-            Q_cms = -999
         # if (self.img_id in (Qdf.img_id.unique())) and (self.poly_id in (Qdf.iindex.unique())):
         #     Q_cms = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'Q_cms']
         #     Qperc = imgs_w_ids.loc[(imgs_w_ids.img_id == self.img_id) & (imgs_w_ids.iindex == self.poly_id)].reset_index().loc[0, 'Q_percentile']
@@ -404,7 +396,6 @@ class TifViewerApp:
                 self.circle_artist = gpd.GeoSeries([circle]).plot(ax=self.ax, facecolor='none', edgecolor='tab:blue')
                 self.line_artist = lines.plot(ax=self.ax, color='tab:blue')
                 self.title_artist = self.ax.set_title(self.img_name)
-                self.desc_artist = self.ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}')
                 # self.desc_artist = self.ax.set_xlabel(f'Discharge = {Q_cms:.02f} cms\nDischarge percentile = {Qperc:.02f}')
 
 
@@ -425,7 +416,6 @@ class TifViewerApp:
                 self.ax.relim()
                 self.ax.autoscale_view()
                 self.title_artist.set_title(self.img_name)
-                self.desc_artist.set_xlabel('0')
                 # self.desc_artist.set_xlabel('0')
                 # print(ndwi[10])
 
@@ -491,8 +481,6 @@ if __name__ == "__main__":
 
     # checked_name_list = list(itertools.chain.from_iterable(lols))
 
-    Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
-    # Qdf = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results\effwidths_82571_029.csv")
     # Qdf = pd.read_csv('C:/Users/dego/Documents/local_files/RSSA/gage_iid_Q.csv')
     # Qdf['iindex'] = np.uint64(Qdf['iindex'])
 
@@ -527,17 +515,14 @@ if __name__ == "__main__":
     
     
     # spot check mode, use to see same day gage and satellite width measurements
-    imgs_w_ids = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_20251012.csv")
     imgs_w_ids = pd.read_csv(r"C:\Users\dego\Documents\local_files\RSSA\stac_img_ids_20251012.csv").sample(frac=1, random_state=1)
     imgs_w_ids['iindex'] = np.uint64(imgs_w_ids['iindex'])
     imgs_w_ids['date'] = pd.to_datetime(imgs_w_ids['date'])
-    imgs_w_ids = pd.merge(imgs_w_ids, Qdf, on=['img_id', 'iindex'], how='outer')
-    # imgs_w_ids = 
     # imgs_w_ids = pd.merge(imgs_w_ids, Qdf, on=['img_id', 'iindex'], how='outer')
+    
 
 
 
-    imgs_w_ids = imgs_w_ids.loc[imgs_w_ids.Q_cms >= 0]
     # imgs_w_ids = imgs_w_ids.loc[imgs_w_ids.Q_cms >= 0]
 
     # imgs_w_ids = imgs_w_ids.loc[(imgs_w_ids.iindex == 245238)]
