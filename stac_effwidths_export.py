@@ -46,6 +46,7 @@ def _init_worker(square_path, circle_path, centerline_path, pt_path, href_dict_i
     G_CI = circles.loc[circles.iindex.isin(valid_iids)].set_index('iindex')
     G_PT = pts.loc[pts.iindex.isin(valid_iids)].set_index('iindex')
     G_SQ = squares.loc[squares.iindex.isin(valid_iids)].set_index('iindex')
+    # print(len(G_CI))
     # .drop(columns='cluster')
 
     
@@ -85,7 +86,7 @@ if __name__ == "__main__":
     # squares = r"C:\Users\dego\Documents\local_files\RSSA\Platte_centerlines_masks\squares_15x_20251010.shp"
     # pills   = r"C:\path\gage_pills_3L_3W_20250904.shp"
 
-    outdir = r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results"
+    outdir = r"C:\Users\dego\Documents\local_files\RSSA\effwidth_results\static"
     completed_files = os.listdir(outdir)
 
     for year in [2018, 2019, 2020, 2021, 2022, 2023, 2024]:
