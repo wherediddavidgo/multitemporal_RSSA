@@ -96,7 +96,7 @@ print('completed grouping')
 print(grouped)
 
 fits = []
-for row in grouped.iter_rows(named=True):
+for row in tqdm(grouped.iter_rows(named=True)):
     o = row['order']
     qd = row['Q_decile']
     w = np.asarray(row['width_list'], dtype=float)
