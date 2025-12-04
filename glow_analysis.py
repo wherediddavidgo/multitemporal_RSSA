@@ -8,7 +8,7 @@ from tqdm import tqdm
 import datetime as dt
 import polars as pl
 
-pl.Config.set_streaming_chunk_size(1_000_000)
+pl.Config.set_streaming_chunk_size(5000)
 pl.Config.set_engine_affinity('streaming')
 CHUNK_SIZE = 1000
 
@@ -43,58 +43,60 @@ n_batches = int(np.ceil(len(ID_arr) / CHUNK_SIZE))
 print(f'Total COMIDs: {len(ID_arr)}')
 print(f'N batches: {n_batches}')
 
-dfs = []
+chunk_files = []
 
-for i in tqdm(range(n_batches)):
+# for i in tqdm(range(n_batches)):
+for i in tqdm(range(5)):
     batch_comids = COMID_arr[i * CHUNK_SIZE : (i + 1) * CHUNK_SIZE]
 
-    glow_chunk = glow.filter(pl.col('COMID').is_in(batch_comids))
-    GDL_chunk = GDL_Q.filter(pl.col('COMID').is_in(batch_comids))
+    glow_chunk = glow.filter(pl.col('COMID').is_in(batch_comids))    
 
+    GDL_chunk = GDL_Q.filter(pl.col('COMID').is_in(batch_comids)).collect()
+    
+    GDL_chunk = GDL_chunk.group_by('COMID').map_groups(lambda df: df.with_columns([
+        pl.Series('Q_rank', df['Qout'].rank().cast(pl.Float32)),
+    ])).lazy()
+    
+    GDL_chunk = GDL_chunk.with_columns([
+        (pl.col('Q_rank')
+            .over('COMID') / 
+            (pl.len().over('COMID') - 1))
+            .alias('Q_percentile')
+            ])
+    
+    GDL_chunk = GDL_chunk.with_columns([
+        (pl.col('Q_percentile') * 10)
+            .floor()
+            .clip(0,9)
+            .cast(pl.Int8)
+            .alias('Q_decile')
+            ])
+    
+    
     chunk_lz = glow_chunk\
         .join(ms_pts_lz, on='COMID', how='inner')\
         .join(GDL_chunk, on=['COMID', 'date'], how='inner')
 
-    chunk_lz = (
-        chunk_lz.with_columns([
-            (pl.col('width')
-                .rank()
-                .over('ID')
-                .cast(pl.Float32))
-                .alias('w_rank'),
+    print(glow_chunk.explain())
+    print(GDL_chunk.explain())
+    df_batch = chunk_lz.collect()
+    path = rf'C:\Users\dego\Documents\local_files\RSSA\GLOW_analysis_chunks\chunk_{i}.parquet'
+    df_batch.write_parquet(path)
 
-            pl.col('Qout')
-                .rank()
-                .over('COMID')
-                .cast(pl.Float32)
-                .alias('Q_rank')
-        ])
-    )
-
-    chunk_lz = chunk_lz.with_columns([
-        (pl.col('w_rank').over('ID') / (pl.len().over('ID') - 1)).alias('w_percentile'),
-        (pl.col('Q_rank').over('COMID') / (pl.len().over('COMID') - 1)).alias('Q_percentile')
-    ])
-
-    chunk_lz = chunk_lz.with_columns([
-        (pl.col("w_percentile") * 10).floor().clip(0,9).cast(pl.Int8).alias("w_decile"),
-        (pl.col("Q_percentile") * 10).floor().clip(0,9).cast(pl.Int8).alias("Q_decile"),
-    ])
-
-    dfs.append(chunk_lz)
+    chunk_files.append(path)
 
 
-result = pl.concat(dfs)
-print('grouping')
+print('Scanning results')
+result = pl.concat([pl.scan_parquet(f) for f in tqdm(chunk_files)])
+
+print('Grouping')
 
 grouped = result\
     .group_by(['order', 'Q_decile'])\
     .agg([pl.col("width").drop_nulls().alias("width_list")])\
     .collect()
 
-print('completed grouping')
-print(grouped)
-
+print('Fitting distributions')
 fits = []
 for row in tqdm(grouped.iter_rows(named=True)):
     o = row['order']
@@ -116,4 +118,4 @@ fit_df = pd.DataFrame(fits)
 
 fit_df.to_csv('C:/Users/dego/Desktop/testfits.csv')
 
-print('complete')
+print('Complete')
