@@ -71,6 +71,11 @@ cb_cl_vis = cb_cl_vis.loc[cb_cl_vis.NewSO <= 9]
 platte_wbd = gpd.read_file(r'c:\Users\dego\Documents\local_files\RSSA\watershed_boundaries\platte\watershed_boundary.shp').to_crs(5070).dissolve()
 merit_filt = gpd.read_file(r'C:\Users\dego\Documents\local_files\RSSA\merit_on_grwl_filt.gpkg').to_crs(5070)
 
+merit_filt['order'] = merit_filt['order'] + 6
+ms_gages = gpd.read_file('C:/Users/dego/Documents/local_files/ms_gages_grwl_filtered.gpkg').to_crs(5070)
+platte_gages = gpd.read_file('C:/Users/dego/Documents/local_files/RSSA/platte_gages.gpkg').to_crs(5070)
+
+
 states = pygris.states().to_crs(5070)
 
 # combine WBDs comprising MS
@@ -85,7 +90,7 @@ ms = pd.concat(ws)\
 
 ms['geometry'] = Polygon(ms.geometry.exterior[0])
 l, b, r, t = ms.total_bounds
-sizes = np.linspace(0.2, 6, 10)
+sizes = np.linspace(0.5, 3, 10)
 order_size_map = {5: sizes[0],
                   6: sizes[1],
                   7: sizes[2],
@@ -103,12 +108,16 @@ merit_filt['linewidth'] = merit_filt['order'].map(order_size_map)
 
 fig, ax = plt.subplots()
 ms.plot(ax=ax, facecolor='none', zorder=2, capstyle='round')
-merit_filt.plot(ax=ax, zorder=4, linewidth=merit_filt['linewidth'], capstyle='round')
+merit_filt.plot(ax=ax, zorder=4, linewidth=merit_filt['linewidth'], capstyle='round', label='Observed by Landsat')
 
 
 states.plot(ax=ax, facecolor='none', edgecolor='tab:gray', linewidth=0.4, zorder=1)
 cb_cl_vis.plot(ax=ax, color='tab:orange', zorder=5, linewidth=cb_cl_vis['linewidth'])
+cb_cl_vis.loc[cb_cl_vis.NewSO == 9].plot(ax=ax, color='tab:orange', zorder=5, linewidth=cb_cl_vis['linewidth'], label='Observed by Sentinel-2')
 platte_wbd.plot(ax=ax, facecolor='none', zorder=3)
+ms_gages.plot(ax=ax, color='black', zorder=6, markersize=3)
+platte_gages.plot(ax=ax, color='black', zorder=7, label='Gage', markersize=3)
+ax.legend()
 
 ax.set_xlim((l - (r - l) / 8), (r + (r - l) / 8))
 ax.set_ylim((b - (t - b) / 8), (t + (t - b) / 8))
