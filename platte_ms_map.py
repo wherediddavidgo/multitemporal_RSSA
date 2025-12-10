@@ -106,7 +106,7 @@ cb_cl_vis['linewidth'] = cb_cl_vis['NewSO'].map(order_size_map)
 merit_filt['linewidth'] = merit_filt['order'].map(order_size_map)
 
 
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(15, 8))
 ms.plot(ax=ax, facecolor='none', zorder=2, capstyle='round')
 merit_filt.plot(ax=ax, zorder=4, linewidth=merit_filt['linewidth'], capstyle='round', label='Observed by Landsat')
 

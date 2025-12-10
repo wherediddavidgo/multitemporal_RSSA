@@ -10,7 +10,7 @@ import os
 # LOAD MS_PTS LOOKUP TABLE
 # ================================================================
 ms_pts = (
-    gpd.read_file(r"C:\Users\dego\Documents\local_files\RSSA\glow_pts_on_grwl.gpkg")
+    gpd.read_file(r"C:\Users\dego\Documents\local_files\RSSA\glow_pts_on_grwl_nolake.gpkg")
     .drop(columns="geometry")
 )
 
@@ -97,7 +97,7 @@ QUERY = r"""
     )
 
     SELECT
-        m.order,
+        m.NHD_order,
         Q_ranked.Q_decile,
         glow_ranked.width
     FROM glow_ranked

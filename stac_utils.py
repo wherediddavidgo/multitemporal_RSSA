@@ -81,18 +81,18 @@ def process_image_from_hrefs(b3_href, b8_href, scl_href, view_geom, otsu_geom):
         ndwi_o = np.ma.array(ndwi_v, mask=~otsu_geom_mask).compressed()
         b8o = np.ma.array(b8v, mask=~otsu_geom_mask).compressed()
 
-        # if ndwi_o.size >= 10:
-        #     ndwi_threshold = threshold_otsu(ndwi_o)
-        #     nir_threshold = threshold_otsu(b8o)
+        if ndwi_o.size >= 10:
+            ndwi_threshold = threshold_otsu(ndwi_o)
+            nir_threshold = threshold_otsu(b8o)
 
-        #     # ndwi_threshold = -0.29
-        #     # nir_threshold = 0.25
-        # else:
-        #     ndwi_threshold = 1
-        #     nir_threshold = 1
+            # ndwi_threshold = -0.29
+            # nir_threshold = 0.25
+        else:
+            ndwi_threshold = 1
+            nir_threshold = 1
 
-        ndwi_threshold = -0.15
-        nir_threshold = 0.20
+        # ndwi_threshold = -0.15
+        # nir_threshold = 0.20
 
         wmask = (ndwi_v >= ndwi_threshold) & (b8v <= nir_threshold)
 
