@@ -14,6 +14,9 @@ ms_pts = (
     .drop(columns="geometry")
 )
 
+# Filter order >= NHD 4 (equivalent to North Platte above Seminoe Reservoir, smallest order in S2 dataset)
+ms_pts = ms_pts.loc[ms_pts.NHD_order >= 4]
+
 ID_arr = ms_pts["ID"].unique().tolist()
 
 # Connect and register ms_pts
@@ -94,34 +97,43 @@ QUERY = r"""
                 ELSE FLOOR((Q_rank - 1)::DOUBLE / NULLIF(Q_count - 1, 0) * 10)
             END AS Q_decile
         FROM Q_chunk
-    ),
-
-    joined AS (
-        SELECT
-            glow_ranked.ID,
-            ms_pts.NHD_order,
-            Q_ranked.Q_decile,
-            glow_ranked.width
-        FROM glow_ranked
-        JOIN ms_pts USING (COMID)
-        JOIN Q_ranked USING (COMID, date)
-        WHERE glow_ranked.width > 0
-    ),
-
-    good_ids AS (
-        SELECT ID
-        FROM joined
-        GROUP BY ID
-        HAVING COUNT(DISTINCT Q_decile) = 10 AND COUNT(*) >= 10
     )
 
     SELECT 
-        joined.NHD_order,
-        joined.Q_decile,
-        joined.width
-    FROM joined
-    JOIN good_ids USING (ID)
+        ms_pts.NHD_order,
+        Q_ranked.Q_decile,
+        glow_ranked.width
+    FROM glow_ranked
+    JOIN ms_pts USING (COMID)
+    JOIN Q_ranked USING (COMID, date)
+    WHERE glow_ranked.width >= 30
     """
+    # joined AS (
+    #     SELECT
+    #         glow_ranked.ID,
+    #         ms_pts.NHD_order,
+    #         Q_ranked.Q_decile,
+    #         glow_ranked.width
+    #     FROM glow_ranked
+    #     JOIN ms_pts USING (COMID)
+    #     JOIN Q_ranked USING (COMID, date)
+    #     WHERE glow_ranked.width > 30
+    # ),
+
+    # good_ids AS (
+    #     SELECT ID
+    #     FROM joined
+    #     GROUP BY ID
+    #     HAVING COUNT(DISTINCT Q_decile) = 10 AND COUNT(*) >= 10
+    # )
+
+    # SELECT 
+    #     joined.NHD_order,
+    #     joined.Q_decile,
+    #     joined.width
+    # FROM joined
+    # JOIN good_ids USING (ID)
+    
 
 # ================================================================
 # PROCESS BATCHES
@@ -153,7 +165,7 @@ for i in tqdm(range(n_batches)):
     # -----------------------------------------------------------
     # WRITE CHUNK TO PARQUET
     # -----------------------------------------------------------
-    out_path = f"{out_dir}/chunk_allQs_gte10{i}.parquet"
+    out_path = f"{out_dir}/chunk_allQs_wgte30{i}.parquet"
     con.execute(f"""
         COPY (SELECT * FROM df_batch)
         TO '{out_path}' (FORMAT PARQUET);
