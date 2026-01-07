@@ -27,7 +27,7 @@ con.execute("""
     CREATE OR REPLACE VIEW glow AS 
         SELECT ID, COMID, date, width
         FROM parquet_scan(
-            'c:/Users/dego/Documents/local_files/sandbox/GLOW/width/width/GLOW_width_region_7.parquet'
+            'C:/Users/dego/Documents/local_files/big_datasets/GLOW/width/width/GLOW_width_region_7.parquet'
         );
 """)
 
@@ -35,7 +35,7 @@ con.execute("""
     CREATE OR REPLACE VIEW GDL AS 
         SELECT COMID, date, Qout
         FROM parquet_scan(
-            'C:/Users/dego/Documents/local_files/RSSA/grades_Q/*.parquet'
+            'C:/Users/dego/Documents/local_files/big_datasets/gradesdl_Q/*.parquet'
         );
 """)
 
@@ -94,16 +94,33 @@ QUERY = r"""
                 ELSE FLOOR((Q_rank - 1)::DOUBLE / NULLIF(Q_count - 1, 0) * 10)
             END AS Q_decile
         FROM Q_chunk
+    ),
+
+    joined AS (
+        SELECT
+            glow_ranked.ID,
+            ms_pts.NHD_order,
+            Q_ranked.Q_decile,
+            glow_ranked.width
+        FROM glow_ranked
+        JOIN ms_pts USING (COMID)
+        JOIN Q_ranked USING (COMID, date)
+        WHERE glow_ranked.width > 0
+    ),
+
+    good_ids AS (
+        SELECT ID
+        FROM joined
+        GROUP BY ID
+        HAVING COUNT(DISTINCT Q_decile) = 10 AND COUNT(*) >= 10
     )
 
-    SELECT
-        m.NHD_order,
-        Q_ranked.Q_decile,
-        glow_ranked.width
-    FROM glow_ranked
-    JOIN ms_pts AS m USING (COMID)
-    JOIN Q_ranked USING (COMID, date)
-    WHERE glow_ranked.width > 0
+    SELECT 
+        joined.NHD_order,
+        joined.Q_decile,
+        joined.width
+    FROM joined
+    JOIN good_ids USING (ID)
     """
 
 # ================================================================
@@ -136,7 +153,7 @@ for i in tqdm(range(n_batches)):
     # -----------------------------------------------------------
     # WRITE CHUNK TO PARQUET
     # -----------------------------------------------------------
-    out_path = f"{out_dir}/chunk_{i}.parquet"
+    out_path = f"{out_dir}/chunk_allQs_gte10{i}.parquet"
     con.execute(f"""
         COPY (SELECT * FROM df_batch)
         TO '{out_path}' (FORMAT PARQUET);
