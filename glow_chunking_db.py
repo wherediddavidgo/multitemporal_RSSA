@@ -44,7 +44,8 @@ con.execute("""
 
 # Directory for output
 out_dir = r"C:\Users\dego\Documents\local_files\RSSA\GLOW_analysis_chunks"
-os.makedirs(out_dir, exist_ok=True)
+subdir = 'ngte_15_wgte_90'
+os.makedirs(os.path.join(out_dir, subdir), exist_ok=True)
 
 # ================================================================
 # BATCH EXECUTION
@@ -97,43 +98,48 @@ QUERY = r"""
                 ELSE FLOOR((Q_rank - 1)::DOUBLE / NULLIF(Q_count - 1, 0) * 10)
             END AS Q_decile
         FROM Q_chunk
+    ),
+
+    
+    joined AS (
+        SELECT
+            glow_ranked.ID,
+            ms_pts.NHD_order,
+            Q_ranked.Q_decile,
+            glow_ranked.width
+        FROM glow_ranked
+        JOIN ms_pts USING (COMID)
+        JOIN Q_ranked USING (COMID, date)
+        WHERE glow_ranked.width > 30
+    ),
+
+    good_ids AS (
+        SELECT ID
+        FROM joined
+        GROUP BY ID
+        HAVING COUNT(DISTINCT Q_decile) = 10 AND COUNT(*) >= 10
     )
 
     SELECT 
-        ms_pts.NHD_order,
-        Q_ranked.Q_decile,
-        glow_ranked.width
-    FROM glow_ranked
-    JOIN ms_pts USING (COMID)
-    JOIN Q_ranked USING (COMID, date)
-    WHERE glow_ranked.width >= 30
+        joined.NHD_order,
+        joined.Q_decile,
+        joined.width
+    FROM joined
+    JOIN good_ids USING (ID)
     """
-    # joined AS (
-    #     SELECT
-    #         glow_ranked.ID,
-    #         ms_pts.NHD_order,
-    #         Q_ranked.Q_decile,
-    #         glow_ranked.width
-    #     FROM glow_ranked
-    #     JOIN ms_pts USING (COMID)
-    #     JOIN Q_ranked USING (COMID, date)
-    #     WHERE glow_ranked.width > 30
-    # ),
 
-    # good_ids AS (
-    #     SELECT ID
-    #     FROM joined
-    #     GROUP BY ID
-    #     HAVING COUNT(DISTINCT Q_decile) = 10 AND COUNT(*) >= 10
-    # )
 
-    # SELECT 
-    #     joined.NHD_order,
-    #     joined.Q_decile,
-    #     joined.width
-    # FROM joined
-    # JOIN good_ids USING (ID)
-    
+# SELECT 
+    #     ms_pts.NHD_order,
+    #     Q_ranked.Q_decile,
+    #     glow_ranked.width
+    # FROM glow_ranked
+    # JOIN ms_pts USING (COMID)
+    # JOIN Q_ranked USING (COMID, date)
+    # WHERE glow_ranked.width >= 30
+    # 
+
+
 
 # ================================================================
 # PROCESS BATCHES
@@ -165,7 +171,7 @@ for i in tqdm(range(n_batches)):
     # -----------------------------------------------------------
     # WRITE CHUNK TO PARQUET
     # -----------------------------------------------------------
-    out_path = f"{out_dir}/chunk_allQs_wgte30{i}.parquet"
+    out_path = f"{out_dir}/{subdir}/chunk{i}.parquet"
     con.execute(f"""
         COPY (SELECT * FROM df_batch)
         TO '{out_path}' (FORMAT PARQUET);
