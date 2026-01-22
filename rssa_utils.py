@@ -192,8 +192,8 @@ def ADD_WATER_MASK(scene, polygon, dynamic=False):
     # nir_threshold = compute_otsu_threshold(nir_histo)
     # NDWI_threshold = compute_otsu_threshold(NDWI_histo)
 
-    nir_mask = nir_scene.select('B8').lt(ee.Image(nir_threshold))
-    NDWI_mask = NDWI_scene.select('NDWI').gt(ee.Image(NDWI_threshold))
+    nir_mask = nir_scene.select('B8').lte(ee.Image(nir_threshold))
+    NDWI_mask = NDWI_scene.select('NDWI').gte(ee.Image(NDWI_threshold))
 
     combined_mask = nir_mask.mask(NDWI_mask.mask(nir_mask)).unmask(0)\
         .rename('water_mask')
@@ -520,42 +520,37 @@ def get_width(pts, infoExport, infoEnds, crs, scale, imgId):
 
 def prepExport(f):
 
-    pt_geom = ee.Geometry(f.get('longitude_latitude'))
+    pt_geom = f.geometry().centroid(1, 'EPSG:3857')
     x = pt_geom.coordinates().get(0)
     y = pt_geom.coordinates().get(1)
                                   
     fOut = f.set({
-        'width': ee.Algorithms.If(ee.Number(f.get('count')).lt(2), ee.Number(-999), ee.Number(f.get('MLength')).multiply(ee.Number(f.get('river_mask')))),
+        'width': ee.Algorithms.If(ee.Number(f.get('count')).lt(2), ee.Number(-999), ee.Number(f.get('xsec_lengt')).multiply(ee.Number(f.get('river_mask')))),
         'endsInWater': ee.Number(f.get('any')).eq(1),
         'endsOverEdge': ee.Number(f.get('count')).lt(2),
         'x': x,
         'y': y
-    }).setGeometry(None)
-
-        # .copyProperties(f, None, ['any', 'count', 'MLength', 'xc', 'yc', 'riverMask'])
+    })
+    
+    fOut = ee.Feature(fOut)\
+        .setGeometry(None)
 
     return fOut
 
 def switch_to_line(f):
     # proj = f.geometry().projection()
     # f = f.setGeometry(ee.Geometry.LineString({'coords': [f.get('p1'), f.get('p2')], 'proj': proj, 'geodesic': False}))\
-    f = f.setGeometry(ee.Geometry.LineString([f.get('p1'), f.get('p2')], None, False))\
-        .set('p1', None)\
-        .set('p2', None)
+    f = f.setGeometry(ee.Geometry.LineString([f.get('p0'), f.get('p1')], None, False))\
+        .set('p0', None)\
+        .set('p1', None)
 
     return f
 
 
 def switch_to_ends(f):
-    f = f.setGeometry(ee.Geometry.MultiPoint([f.get('p1'), f.get('p2')]))
+    f = f.setGeometry(ee.Geometry.MultiPoint([f.get('p0'), f.get('p1')]))
 
     return f
-
-def poop():
-    print('poop')
-
-
-
 
 
 #### PRECOMPUTING RODEO FUNCS
