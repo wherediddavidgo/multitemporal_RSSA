@@ -14,9 +14,6 @@ ms_pts = (
     .drop(columns="geometry")
 )
 
-# Filter order >= NHD 4 (equivalent to North Platte above Seminoe Reservoir, smallest order in S2 dataset)
-ms_pts = ms_pts.loc[ms_pts.NHD_order >= 4]
-
 ID_arr = ms_pts["ID"].unique().tolist()
 
 # Connect and register ms_pts
