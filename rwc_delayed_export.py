@@ -1,13 +1,14 @@
 import ee
 import time
+from tqdm import tqdm
 
 ee.Authenticate()
 ee.Initialize(project='ee-wherediddavidgo')
 
 import rssa_utils as utils
 
-MAX_IN_FLIGHT = 2
-POLL_SECONDS = 5
+MAX_IN_FLIGHT = 5
+POLL_SECONDS = 60
 
 buffers = ee.FeatureCollection('projects/ee-wherediddavidgo/assets/ms_grwl_2e4_point_buffers')
 rCl = ee.ImageCollection('projects/ee-wherediddavidgo/assets/grwl_centerline_raster')
@@ -16,7 +17,6 @@ pts = ee.FeatureCollection('projects/ee-wherediddavidgo/assets/ms_grwl_pts_2e4')
 
 big_ic = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')\
     .filterMetadata('CLOUDY_PIXEL_PERCENTAGE', 'less_than', 20)
-
 
 def process_scene_aoi(scene, aoi):
     rCl_filt = rCl.filterBounds(aoi)\
@@ -53,7 +53,7 @@ def EXTRACT_WIDTHS_FROM_IMAGE(scene):
     return output
 
 
-def count_in_flight_tasks(prefix=None):
+def check_in_flight(prefix=None):
     tasks = ee.batch.Task.list()
     in_flight = []
     for t in tasks:
@@ -62,45 +62,69 @@ def count_in_flight_tasks(prefix=None):
         desc = st.get('description', '')
         if state in ('READY', 'RUNNING'):
             if prefix is None or desc.startswith(prefix):
-                in_flight.append(t)
-    return len(in_flight)
+                id = desc.split('_')[1]
+                year = desc.split('_')[2]
+                in_flight.append((id, year))
+    return in_flight
 
 
 def wait_for_room(prefix=None):
-    while count_in_flight_tasks(prefix) >= MAX_IN_FLIGHT:
-        print('waiting', POLL_SECONDS)
+    while len(check_in_flight(prefix)) >= MAX_IN_FLIGHT:
+        print('Waiting', POLL_SECONDS)
         time.sleep(POLL_SECONDS)
 
+
+def check_completed(prefix=None):
+    print("Checking completed tasks")
+    tasks = ee.batch.Task.list()
+    completed = []
+    for t in tqdm(tasks):
+        st = t.status()
+        state = st.get('state')
+        desc = st.get('description', '')
+        if state == 'COMPLETED':
+            if desc.startswith(prefix):
+                id = desc.split('_')[1]
+                year = desc.split('_')[2]
+                completed.append((id, year))
+    print(f'{len(completed)} / {7 * 344} uploads complete')
+    return completed
 
 f = open('ms_s2_mgrs_ids.txt', 'r')
 content = f.read()
 idlist = content.split('\n')
 
+idlist = idlist
+
 props = ['system:index', 'img_id', 'xsec_lengt', 'any', 'cloud_mask', 'cloudwater_mask', 'count', 'endsInWater', 'endsOverEdge', 'river_mask', 'scene_cloudy_pixel_percentage', 'scene_date', 'snow_mask', 'width', 'x', 'y']
 
 n = 0
 
+completed_tasks = check_completed('widths')
+
 for year in [2018, 2019, 2020, 2021, 2022, 2023, 2024]:
     for id in idlist:
-        if n % 3 == 0:
-            wait_for_room('widths')
+        if (id, year) not in completed_tasks and (id, year) not in check_in_flight('widths'):
+            if n % 10 == 0:
+                wait_for_room('widths')
 
 
-        temp_ic = big_ic\
-            .filter(ee.Filter.calendarRange(year, None, 'year'))\
-            .filterMetadata('MGRS_TILE', 'equals', id)
-        
-        widths = temp_ic.map(EXTRACT_WIDTHS_FROM_IMAGE, dropNulls=True).flatten().select(props)
+            temp_ic = big_ic\
+                .filter(ee.Filter.calendarRange(year, None, 'year'))\
+                .filterMetadata('MGRS_TILE', 'equals', id)
             
-        task = ee.batch.Export.table.toDrive(**{
-            'collection': widths,
-            'folder': 'ms_rwc_2e4_exports',
-            'fileNamePrefix': f'widths_{id}_{year}',
-            'description': f'widths_{id}_{year}',
+            widths = temp_ic.map(EXTRACT_WIDTHS_FROM_IMAGE, dropNulls=True).flatten().select(props)
+                
+            task = ee.batch.Export.table.toDrive(**{
+                'collection': widths,
+                'folder': 'ms_rwc_2e4_exports',
+                'fileNamePrefix': f'widths_{id}_{year}',
+                'description': f'widths_{id}_{year}',
 
-        })
+            })
 
-        task.start()
-        
-        n += 1
-        print(f'year: {year}, tile: {id} uploaded')
+            task.start()
+            
+            n += 1
+            print(f'Year: {year}, Tile: {id} uploaded')
+            time.sleep(1)
