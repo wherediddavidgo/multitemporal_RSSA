@@ -35,72 +35,6 @@ def compute_otsu_threshold(histogram):
     return means.sort(bss).get([-1])
 
 
-
-
-
-
-
-
-def compute_otsu_threshold_gpt(histogram):
-    """Applies Otsu's thresholding with error handling."""
-    
-
-    
-    # Extract histogram data safely
-    counts, means = safe_histogram_extraction(histogram)
-    
-    # Ensure arrays are valid
-    size = means.length().get([0])
-    
-    # Fallback threshold in case of empty data
-    def empty_case():
-        return ee.Image(-999)  # Default threshold if no valid data
-
-    # Perform Otsu's method if data is valid
-    def otsu_logic():
-        total = counts.reduce(ee.Reducer.sum(), [0]).get([0])
-        sum_values = means.multiply(counts).reduce(ee.Reducer.sum(), [0]).get([0])
-        mean = sum_values.divide(total)
-
-        indices = ee.List.sequence(1, size.subtract(1))
-
-        def compute_bss(i):
-            i = ee.Number(i)
-            
-            # Partition A
-            a_counts = counts.slice(0, 0, i)
-            a_count = a_counts.reduce(ee.Reducer.sum(), [0]).get([0])
-            
-            a_means = means.slice(0, 0, i)
-            a_mean = a_means.multiply(a_counts).reduce(ee.Reducer.sum(), [0]).get([0]).divide(a_count)
-
-            # Partition B
-            b_count = total.subtract(a_count)
-            b_mean = sum_values.subtract(a_count.multiply(a_mean)).divide(b_count)
-
-            # Between-class variance
-            return a_count.multiply(a_mean.subtract(mean).pow(2)).add(
-                b_count.multiply(b_mean.subtract(mean).pow(2))
-            )
-
-        # Map over indices to get BSS values
-        bss = indices.map(compute_bss)
-
-        # Return threshold with max BSS
-        return means.sort(bss).get([-1])
-
-    # Apply Otsu or fallback
-    threshold = ee.Algorithms.If(
-        size.gt(1),
-        otsu_logic(),
-        empty_case()
-    )
-
-    return ee.Image(threshold)
-
-
-
-
 # Function to safely extract histogram data
 def safe_histogram_extraction(histogram):
     """Safely extracts histogram data with error handling."""
@@ -164,14 +98,14 @@ def ADD_WATER_MASK(scene, polygon, dynamic=False):
         NDWI_histo = NDWI_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'geometry': polygon, 'maxPixels': 1000000000}).get('NDWI')
 
 
-        polygon_in_scene = ee.Algorithms.If(
-            scene.geometry().intersects(polygon),
+        scene_aoi_overlap = ee.Algorithms.If(
+            NDWI_histo,
             True,
             False
         )
         nir_threshold = ee.Number(
             ee.Algorithms.If(
-                polygon_in_scene,
+                scene_aoi_overlap,
                 compute_otsu_threshold(nir_histo),
                 2
             )
@@ -179,7 +113,7 @@ def ADD_WATER_MASK(scene, polygon, dynamic=False):
 
         NDWI_threshold = ee.Number(
             ee.Algorithms.If(
-                polygon_in_scene,
+                scene_aoi_overlap,
                 compute_otsu_threshold(NDWI_histo),
                 2
             )
@@ -482,12 +416,14 @@ def CALCULATE_WIDTH(scene, pts):
     scale = scene.select('B3').projection().nominalScale()
     imgId = scene.get('PRODUCT_ID')
     bound = scene.select('river_mask').geometry()
+    nir_threshold = scene.select('nir_threshold')
+    ndwi_threshold = scene.select('ndwi_threshold')
 
     infoExport = scene.select(['river_mask', 'snow_mask', 'cloud_mask', 'cloudwater_mask'])
 
     infoEnds = scene.select('river_mask')
 
-    line_stats = get_width(pts, infoExport, infoEnds, crs, scale, imgId)\
+    line_stats = get_width(pts, infoExport, infoEnds, crs, scale, imgId, nir_threshold, ndwi_threshold)\
         .map(prepExport)
 
     return line_stats

@@ -109,7 +109,7 @@ completed_tasks = check_completed('widths')
 active_tasks = check_in_flight('widths')
 # print(active_tasks)
 
-props = ['system:index', 'img_id', 'xsec_lengt', 'any', 'cloud_mask', 'cloudwater_mask', 'count', 'endsInWater', 'endsOverEdge', 'river_mask', 'scene_cloudy_pixel_percentage', 'scene_date', 'snow_mask', 'width', 'x', 'y']
+props = ['system:index', 'img_id', 'xsec_lengt', 'any', 'cloud_mask', 'cloudwater_mask', 'count', 'endsInWater', 'endsOverEdge', 'river_mask', 'scene_cloudy_pixel_percentage', 'scene_date', 'snow_mask', 'width', 'x', 'y', 'nir_threshold', 'ndwi_threshold']
 
 # Counter. Checking for active tasks takes a lot of time, so only do it every 10 loops.
 n = 0
