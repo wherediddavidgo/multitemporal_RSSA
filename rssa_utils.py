@@ -416,14 +416,14 @@ def CALCULATE_WIDTH(scene, pts):
     scale = scene.select('B3').projection().nominalScale()
     imgId = scene.get('PRODUCT_ID')
     bound = scene.select('river_mask').geometry()
-    nir_threshold = scene.select('nir_threshold')
-    ndwi_threshold = scene.select('ndwi_threshold')
+    # nir_threshold = scene.get('nir_threshold')
+    ndwi_threshold = scene.get('ndwi_threshold')
 
     infoExport = scene.select(['river_mask', 'snow_mask', 'cloud_mask', 'cloudwater_mask'])
 
     infoEnds = scene.select('river_mask')
 
-    line_stats = get_width(pts, infoExport, infoEnds, crs, scale, imgId, nir_threshold, ndwi_threshold)\
+    line_stats = get_width(pts, infoExport, infoEnds, crs, scale, imgId)\
         .map(prepExport)
 
     return line_stats
@@ -450,7 +450,7 @@ def get_width(pts, infoExport, infoEnds, crs, scale, imgId):
         'crs': crs
     })
 
-    xsections = xsections.map(lambda x: x.set({'img_id': imgId}))
+    xsections = xsections.map(lambda x: x.set({'img_id': imgId, 'nir_threshold': nir_threshold, 'ndwi_threshold': ndwi_threshold}))
     return xsections
 
 

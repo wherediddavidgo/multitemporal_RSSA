@@ -34,11 +34,14 @@ def process_scene_aoi(scene, aoi):
 
     cpp = scene.get('CLOUDY_PIXEL_PERCENTAGE')
     dt = scene.date()
-
+    nir_threshold = scene.get(nir_threshold)
+    ndwi_threshold = scene.get(ndwi_threshold)
     
     def add_info(f):
         return f.set({'scene_cloudy_pixel_percentage': cpp,
-                      'scene_date': dt})
+                      'scene_date': dt,
+                      'nir_threshold': nir_threshold,
+                      'ndwi_thresold': ndwi_threshold})
     
     widths = widths.map(add_info)
     
