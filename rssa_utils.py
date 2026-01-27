@@ -132,29 +132,29 @@ def ADD_WATER_MASK(scene, polygon, dynamic=False):
     combined_mask = nir_mask.mask(NDWI_mask.mask(nir_mask)).unmask(0)\
         .rename('water_mask')
 
-    return scene.addBands(combined_mask).set({'nirThreshold': (nir_threshold), 'ndwiThreshold': (NDWI_threshold)})
+    return scene.addBands(combined_mask).set({'nir_threshold': (nir_threshold), 'ndwi_threshold': (NDWI_threshold)})
 
 
 
-def ADD_WATER_MASK_nopoly(scene):
-    """Gets Otsu threshold for Sentinel 2 NIR band and Xu MNDWI. Water pixels must have NIR values below the NIR threshold and MNDWI values above the MNDWI threshold.
-    Intersection between NIR and MNDWI masks is the final water mask."""
-    NDWI_scene = get_NDWI(scene)
-    nir_scene = scene.select('B8')
+# def ADD_WATER_MASK_nopoly(scene):
+#     """Gets Otsu threshold for Sentinel 2 NIR band and Xu MNDWI. Water pixels must have NIR values below the NIR threshold and MNDWI values above the MNDWI threshold.
+#     Intersection between NIR and MNDWI masks is the final water mask."""
+#     NDWI_scene = get_NDWI(scene)
+#     nir_scene = scene.select('B8')
 
-    nir_histo = nir_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'maxPixels': 1000000000}).get('B8')
-    NDWI_histo = NDWI_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'maxPixels': 1000000000}).get('NDWI')
+#     nir_histo = nir_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'maxPixels': 1000000000}).get('B8')
+#     NDWI_histo = NDWI_scene.reduceRegion(**{'reducer': ee.Reducer.histogram(), 'maxPixels': 1000000000}).get('NDWI')
 
-    nir_threshold = compute_otsu_threshold(nir_histo)
-    NDWI_threshold = compute_otsu_threshold(NDWI_histo)
+#     nir_threshold = compute_otsu_threshold(nir_histo)
+#     NDWI_threshold = compute_otsu_threshold(NDWI_histo)
 
-    nir_mask = nir_scene.select('B8').lt(ee.Image(nir_threshold))
-    NDWI_mask = NDWI_scene.select('NDWI').gt(ee.Image(NDWI_threshold))
+#     nir_mask = nir_scene.select('B8').lt(ee.Image(nir_threshold))
+#     NDWI_mask = NDWI_scene.select('NDWI').gt(ee.Image(NDWI_threshold))
 
-    combined_mask = nir_mask.mask(NDWI_mask.mask(nir_mask)).unmask(0)\
-        .rename('waterMask')
+#     combined_mask = nir_mask.mask(NDWI_mask.mask(nir_mask)).unmask(0)\
+#         .rename('waterMask')
 
-    return scene.addBands(combined_mask).set({'nirThreshold': (nir_threshold), 'ndwiThreshold': (NDWI_threshold)})
+#     return scene.addBands(combined_mask).set({'nir_threshold': (nir_threshold), 'ndwi_threshold': (NDWI_threshold)})
 
 
 
@@ -450,7 +450,7 @@ def get_width(pts, infoExport, infoEnds, crs, scale, imgId):
         'crs': crs
     })
 
-    xsections = xsections.map(lambda x: x.set({'img_id': imgId, 'nir_threshold': nir_threshold, 'ndwi_threshold': ndwi_threshold}))
+    xsections = xsections.map(lambda x: x.set({'img_id': imgId}))
     return xsections
 
 
