@@ -6,13 +6,14 @@ import pandas as pd
 import geopandas as gpd
 import igraph as ig
 from common import WORK, OUT, THRESH_COLS, ALBERS
+GRAPH_SNAP = 5
 
 def collect_paths(percentile_col: str):
     return sorted((WORK / "huc12").glob(f"*/streams_{percentile_col}.gpkg"))
     # return sorted((WORK / "huc12").glob(f"0501*/streams_{percentile_col}.gpkg"))
 
 def _read_one(p):
-    return gpd.read_file(p).to_crs(ALBERS)
+    return gpd.read_file(p).set_crs(ALBERS)
 
 def merge(paths):
     n_workers = int(os.environ.get("SLURM_CPUS_PER_TASK", 4))
@@ -28,8 +29,8 @@ def strahler_igraph(streams_gdf, snap_decimals=0):
         c = list(geom.coords)
         # u = tuple(round(x, snap_decimals) for x in c[0])
         # v = tuple(round(x, snap_decimals) for x in c[-1])
-        u = tuple(5 * round(x / 5) for x in c[0])
-        v = tuple(5 * round(x / 5) for x in c[-1])
+        u = tuple(GRAPH_SNAP * round(x / GRAPH_SNAP) for x in c[0])
+        v = tuple(GRAPH_SNAP * round(x / GRAPH_SNAP) for x in c[-1])
         if u == v: continue
         for k in (u, v): nodes.setdefault(k, len(nodes))
         edges.append((nodes[u], nodes[v]))
@@ -75,15 +76,18 @@ def main(percentile_idx: int):
     print(f"[{col}] merging {len(paths)} HUC12 files", flush=True)
 
     gdf = merge(paths)
-    # gdf = strahler_igraph(gdf)
+    corrections = gpd.read_file('/home/dego/headwater_network_extraction/catchment_geodata/stream_vector_corrections.gpkg')
+    gdf = pd.concat([gdf, corrections])
+
+    gdf = strahler_igraph(gdf)
 
     OUT.mkdir(parents=True, exist_ok=True)
-    gdf.to_file(OUT / f"network_{col}_merged.gpkg", driver="GPKG")
+    gdf.to_file(f"/scratch/dego/miss/output/network_{col}_merged.gpkg", driver="GPKG", overwrite=True)
 
-    # summary = (gdf.assign(length_m=gdf.geometry.length)
-    #               .groupby("strahler")["length_m"].sum().reset_index())
-    # summary["percentile"] = col
-    # summary.to_csv(OUT / f"lengths_by_order_{col}_test.csv", index=False)
+    summary = (gdf.assign(length_m=gdf.geometry.length)
+                  .groupby("strahler")["length_m"].sum().reset_index())
+    summary["percentile"] = col
+    summary.to_csv(OUT / f"lengths_by_order_{col}_20260729.csv", index=False)
     print(f"[{col}], "
           f"total {gdf.geometry.length.sum()/1e3:.0f} km", flush=True)
 

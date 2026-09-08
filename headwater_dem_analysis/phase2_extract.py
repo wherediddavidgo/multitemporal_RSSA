@@ -14,7 +14,7 @@ from common import (WORK, ALBERS, THRESH_COLS, KM2_TO_CELLS_AT_10M,
                     load_huc4, load_thresh_catchments)
 THRESH_COLS.reverse()
 
-HUC12_BUFFER_M = 5000
+HUC12_BUFFER_M = 500
 
 def clip_to_huc12(src_path, geom, out_path, geom_crs, buffer_m=HUC12_BUFFER_M):
     with rasterio.open(src_path) as src:
@@ -45,18 +45,18 @@ def extract_one_huc12(row, parent_pntr, parent_facc, out_root, geom_crs):
 
     written = {}
     for col in THRESH_COLS:
-        t_cells = int(round(float(row[col]) * KM2_TO_CELLS_AT_10M))
+        t_cells = (float(row[col])) * KM2_TO_CELLS_AT_10M
         if t_cells < 1:
             written[col] = None; continue
         sr = h / f"streams_{col}.tif"
         sv = h / f"streams_{col}.shp"
         wbt.extract_streams(flow_accum=str(facc), output=str(sr), threshold=t_cells)
-        wbt.raster_streams_to_vector(streams=str(sr), d8_pntr=str(pntr), output=str(sv))
+        wbt.raster_streams_to_vector(streams=str(sr), d8_pntr=str(pntr), output=str(sv), esri_pntr=True)
 
         if not sv.exists():
             written[col] = None; continue
         gdf = gpd.read_file(sv)
-        gdf = gdf.set_crs(utm)
+        # gdf = gdf.set_crs(utm)
         if len(gdf) == 0:
             written[col] = None; continue
         gdf = gpd.clip(gdf, row.geometry)
@@ -68,7 +68,7 @@ def extract_one_huc12(row, parent_pntr, parent_facc, out_root, geom_crs):
 
     pntr.unlink(missing_ok=True)
     facc.unlink(missing_ok=True)
-    for f in h.glob("streams_*.tif"): f.unlink()
+    # for f in h.glob("streams_*.tif"): f.unlink()
     for f in h.glob("streams_*.shp*"): f.unlink()
     for f in h.glob("streams_*.dbf*"): f.unlink()
     for f in h.glob("streams_*.shx*"): f.unlink()
@@ -77,10 +77,12 @@ def extract_one_huc12(row, parent_pntr, parent_facc, out_root, geom_crs):
 def main(huc4_idx: int, huc4_path: str, catchments_path: str, n_workers: int):
     huc4 = load_huc4(huc4_path).iloc[huc4_idx]
     hid_h4 = huc4["huc4"]
-    parent_pntr = WORK / "huc4" / hid_h4 / "pntr.tif"
-    parent_facc = WORK / "huc4" / hid_h4 / "facc.tif"
+    # parent_pntr = WORK / "huc4" / hid_h4 / "pntr.tif"
+    # parent_facc = WORK / "huc4" / hid_h4 / "facc.tif"
+    parent_pntr = Path('/home/dego/headwater_network_extraction/NHD_fdr/nhd_fdr_mos_arc_corr.tif')
+    parent_facc = Path('/home/dego/headwater_network_extraction/NHD_fac/nhd_fac_burn.tif')
 
-    utm = (WORK / "huc4" / hid_h4 / "utm_crs.txt").read_text().strip()
+    # utm = (WORK / "huc4" / hid_h4 / "utm_crs.txt").read_text().strip()
 
     if not parent_facc.exists():
         raise FileNotFoundError(f"Phase 1 output missing for {hid_h4}")
@@ -89,12 +91,12 @@ def main(huc4_idx: int, huc4_path: str, catchments_path: str, n_workers: int):
     catch_in_huc4 = catch[catch.intersects(huc4.geometry)].copy()
     # belt-and-suspenders: keep only HUC12s whose centroid lies in this HUC4
     catch_in_huc4 = catch_in_huc4[catch_in_huc4.representative_point().within(huc4.geometry)]
-    catch_in_huc4 = catch_in_huc4.to_crs(utm)
+    # catch_in_huc4 = catch_in_huc4.to_crs(utm)
     print(f"[{hid_h4}] {len(catch_in_huc4)} HUC12s")
 
     out_root = WORK / "huc12"
     with ProcessPoolExecutor(max_workers=n_workers) as ex:
-        futs = [ex.submit(extract_one_huc12, row, parent_pntr, parent_facc, out_root, utm)
+        futs = [ex.submit(extract_one_huc12, row, parent_pntr, parent_facc, out_root, ALBERS)
                 for _, row in catch_in_huc4.iterrows()]
         for f in as_completed(futs):
             try: f.result()

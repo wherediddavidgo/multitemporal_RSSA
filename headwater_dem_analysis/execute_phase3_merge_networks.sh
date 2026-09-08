@@ -5,8 +5,8 @@
 #SBATCH --array=0-9
 #SBATCH --mem=400G
 #SBATCH --qos=tc_normal_short
-#SBATCH --time=4:00:00
-#SBATCH --output=/home/dego/headwater_network_extraction/logs/merge_nostrahler%A_%a.out
+#SBATCH --time=24:00:00
+#SBATCH --output=/home/dego/headwater_network_extraction/logs/merge_strahler%A_%a.out
 
 module load Miniforge3
 source activate /home/dego/.conda/envs/headwater_env_tc

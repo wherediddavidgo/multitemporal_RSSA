@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --account=rivermap
 #SBATCH --job-name=miss_p1
-#SBATCH --array=39                # 30 HUC4s in the Mississippi
+#SBATCH --array=0-83                # 30 HUC4s in the Mississippi
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --time=8:00:00
 #SBATCH --output=/home/dego/headwater_network_extraction/logs/extract_%A_%a.out
 

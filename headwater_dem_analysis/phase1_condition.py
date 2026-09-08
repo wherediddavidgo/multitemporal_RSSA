@@ -75,85 +75,88 @@ def burn_reference_network(dem_path, grwl_path, huc4_geom_albers, utm_crs,
     return out_path
 
 
-def main(huc4_idx: int, huc4_path: str, tile_idx_path: str, grwl_path: str | None):
+def main(huc4_idx: int, huc4_path: str, pntr_tile_idx_path: str, uparea_tile_idx_path: str, grwl_path: str | None):
     huc4 = load_huc4(huc4_path).iloc[huc4_idx]
-    tiles = gpd.read_file(tile_idx_path)
+    pntr_tiles = gpd.read_file(pntr_tile_idx_path)
+    uparea_tiles = gpd.read_file(uparea_tile_idx_path)
     hid = huc4["huc4"]
 
-    utm = utm_crs_for_geom(huc4.geometry)
-    print(f'[{hid}] using {utm}')
+    # utm = utm_crs_for_geom(huc4.geometry)
+    # print(f'[{hid}] using {utm}')
 
     h = WORK / "huc4" / hid
     h.mkdir(parents=True, exist_ok=True)
 
-    dem      = h / "dem_utm.tif"
-    filled   = h / "filled.tif"
-    burned   = h / "dem_burned.tif"
-    breached = h / "breached.tif"
+    # dem      = h / "dem_utm.tif"
+    # filled   = h / "filled.tif"
+    # burned   = h / "dem_burned.tif"
+    # breached = h / "breached.tif"
     pntr     = h / "pntr.tif"
     facc     = h / "facc.tif"
 
-    print(facc)
+    # print(facc)
 
     if pntr.exists() and facc.exists():
         # print(f"[{hid}] already done"); return
         os.remove(pntr)
         os.remove(facc)
 
-    warp_tiles_for_aoi(huc4.geometry, tiles, dem, target_crs=utm, buffer_m=5000)
+    warp_tiles_for_aoi(huc4.geometry, pntr_tiles, pntr, target_crs=ALBERS, buffer_m=5000)
+    warp_tiles_for_aoi(huc4.geometry, uparea_tiles, facc, target_crs=ALBERS, buffer_m=5000)
     # Save the CRS used so Phase 2 can read it without recomputing
-    (h / "utm_crs.txt").write_text(utm)
+    # (h / "utm_crs.txt").write_text(utm)
 
-    wbt = whitebox.WhiteboxTools()
-    wbt.exe_path = '/home/dego/headwater_network_extraction/whitebox_tools/WBT/'
-    wbt.set_verbose_mode(True)
-    wbt.set_compress_rasters(True)
-    wbt.set_max_procs(int(os.environ.get("SLURM_CPUS_PER_TASK", 8)))
+    # wbt = whitebox.WhiteboxTools()
+    # wbt.exe_path = '/home/dego/headwater_network_extraction/whitebox_tools/WBT/'
+    # wbt.set_verbose_mode(True)
+    # wbt.set_compress_rasters(True)
+    # wbt.set_max_procs(int(os.environ.get("SLURM_CPUS_PER_TASK", 8)))
 
-    if grwl_path:
-        burned = burn_reference_network(
-            dem, grwl_path, huc4.geometry, utm, burned, 10.0
-        )
-    else:
-        burned = dem
+    # if grwl_path:
+    #     burned = burn_reference_network(
+    #         dem, grwl_path, huc4.geometry, utm, burned, 10.0
+    #     )
+    # else:
+    #     burned = dem
 
 
-    ret = wbt.breach_depressions_least_cost(
-        dem=burned, output=str(breached), dist=20, fill=False
-    )
-    if ret != 0:
-        raise RuntimeError(f"[{hid}] breach_depressions_least_cost failed (code {ret})")
+    # ret = wbt.breach_depressions_least_cost(
+    #     dem=burned, output=str(breached), dist=20, fill=False
+    # )
+    # if ret != 0:
+    #     raise RuntimeError(f"[{hid}] breach_depressions_least_cost failed (code {ret})")
     
 
-    ret = wbt.fill_depressions_wang_and_liu(
-        dem=str(breached), output=str(filled)
-    )
-    if ret != 0:
-        raise RuntimeError(f"[{hid}] fill_depressions_wang_and_liu failed (code {ret})")
+    # ret = wbt.fill_depressions_wang_and_liu(
+    #     dem=str(breached), output=str(filled)
+    # )
+    # if ret != 0:
+    #     raise RuntimeError(f"[{hid}] fill_depressions_wang_and_liu failed (code {ret})")
 
 
-    ret = wbt.d8_pointer(dem=str(filled), output=str(pntr))
-    if ret != 0:
-        raise RuntimeError(f"[{hid}] d8_pointer failed (code {ret})")
-    _ensure_float64(pntr)
+    # ret = wbt.d8_pointer(dem=str(filled), output=str(pntr))
+    # if ret != 0:
+    #     raise RuntimeError(f"[{hid}] d8_pointer failed (code {ret})")
+    # _ensure_float64(pntr)
 
-    ret = wbt.d8_flow_accumulation(
-        i=str(pntr), output=str(facc), out_type="cells", pntr=True,
-    )
-    if ret != 0:
-        raise RuntimeError(f"[{hid}] d8_flow_accumulation failed (code {ret})")
-    _ensure_float64(facc)
-    dem.unlink(missing_ok=True)
-    filled.unlink(missing_ok=True)
-    burned.unlink(missing_ok=True)
-    breached.unlink(missing_ok=True)
+    # ret = wbt.d8_flow_accumulation(
+    #     i=str(pntr), output=str(facc), out_type="cells", pntr=True,
+    # )
+    # if ret != 0:
+    #     raise RuntimeError(f"[{hid}] d8_flow_accumulation failed (code {ret})")
+    # _ensure_float64(facc)
+    # dem.unlink(missing_ok=True)
+    # filled.unlink(missing_ok=True)
+    # burned.unlink(missing_ok=True)
+    # breached.unlink(missing_ok=True)
     print(f"[{hid}] done")
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--huc4-idx", type=int, required=True)   # SLURM_ARRAY_TASK_ID
     ap.add_argument("--huc4-path", required=True)
-    ap.add_argument("--tile-idx-path", required=True)
+    ap.add_argument("--pntr-tile-idx-path", required=True)
+    ap.add_argument("--uparea-tile-idx-path", required=True)
     ap.add_argument("--grwl-path", default=None,
                     help="GRWL centerlines shapefile; omit to skip stream burning")
     print(f'Starting at {datetime.datetime.now()}')

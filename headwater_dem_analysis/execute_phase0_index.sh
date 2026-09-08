@@ -3,7 +3,7 @@
 #SBATCH --job-name=miss_p1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G                      # headroom for largest HUC4s
-#SBATCH --time=6:00:00
+#SBATCH --time=2:00:00
 #SBATCH --output=/home/dego/headwater_network_extraction/logs/create_tile_index_%A_%a.out
 
 module load Miniforge3
